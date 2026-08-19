@@ -93,6 +93,24 @@ async def get_session(sid: str, admin=Depends(require_admin)):
     return s
 
 
+@router.delete("/sessions/{sid}")
+async def delete_session(sid: str, admin=Depends(require_admin)):
+    s = await db.sessions.find_one({"id": sid})
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if s.get("is_live"):
+        raise HTTPException(400, "This dataset is live. Go live with another dataset first, then delete this one.")
+    deleted = (await db.physicians.delete_many({"session_id": sid})).deleted_count
+    await db.sessions.delete_one({"id": sid})
+    # Clean up any uploaded chunk files.
+    import shutil
+    try:
+        shutil.rmtree(UPLOAD_DIR / sid, ignore_errors=True)
+    except Exception:
+        pass
+    return {"ok": True, "physicians_removed": deleted}
+
+
 # ---------------- Chunked resumable upload ----------------
 @router.post("/sessions/{sid}/files/init")
 async def init_file(sid: str, filename: str = Form(...), admin=Depends(require_admin)):

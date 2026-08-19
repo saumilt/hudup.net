@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { UploadCloud, FileCheck2, Loader2, CheckCircle2, AlertTriangle, Zap, Database } from "lucide-react";
+import { UploadCloud, FileCheck2, Loader2, CheckCircle2, AlertTriangle, Zap, Database, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const CHUNK = 4 * 1024 * 1024;
@@ -97,6 +97,17 @@ export default function IngestionPanel() {
     toast.success("Synthetic sample dataset generated & live");
     loadLive(); loadSessions();
   };
+  const deleteSession = async (s) => {
+    if (!window.confirm(`Delete dataset "${s.name}"? This removes all its physician records and cannot be undone.`)) return;
+    try {
+      const r = await api.delete(`/admin/sessions/${s.id}`);
+      toast.success(`Deleted — ${r.data.physicians_removed.toLocaleString()} records removed`);
+      if (selected?.id === s.id) setSelected(null);
+      loadSessions(); loadLive();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not delete dataset");
+    }
+  };
 
   const cov = selected?.coverage;
 
@@ -117,13 +128,18 @@ export default function IngestionPanel() {
           </div>
           <div className="space-y-1">
             {sessions.map((s) => (
-              <button key={s.id} data-testid={`session-${s.id}`} onClick={() => setSelected(s)} className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${selected?.id === s.id ? "border-primary bg-primary/5" : "border-slate-200"}`}>
-                <span className="font-medium">{s.name}</span>
+              <div key={s.id} className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm ${selected?.id === s.id ? "border-primary bg-primary/5" : "border-slate-200"}`}>
+                <button data-testid={`session-${s.id}`} onClick={() => setSelected(s)} className="flex flex-1 items-center text-left font-medium">
+                  {s.name}
+                </button>
                 <span className="flex items-center gap-2">
                   {s.is_live && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">LIVE</span>}
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.status === "finalized" ? "bg-blue-100 text-blue-700" : s.status === "processing" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{s.status}</span>
+                  <button data-testid={`delete-session-${s.id}`} onClick={() => deleteSession(s)} disabled={s.is_live} title={s.is_live ? "Go live with another dataset first" : "Delete dataset"} className="rounded p-1 text-slate-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </span>
-              </button>
+              </div>
             ))}
           </div>
         </div>
