@@ -1,0 +1,277 @@
+{
+  "app_name": "BoothIQ",
+  "surfaces": [
+    "web",
+    "mobile"
+  ],
+  "personality": "1 (iOS-Native Clean) structure + 4 (Tactile) elements for Kiosk celebration",
+  "personality_one_liner": "A high-trust, B2B healthcare lead engine that transforms into a premium, tactile game-show experience for the end user.",
+  "brand": {
+    "color": {
+      "surface": "#FFFFFF",
+      "onSurface": "#0F172A",
+      "surfaceSecondary": "#F8FAFC",
+      "onSurfaceSecondary": "#334155",
+      "surfaceTertiary": "#E2E8F0",
+      "onSurfaceTertiary": "#475569",
+      "surfaceInverse": "#0F172A",
+      "onSurfaceInverse": "#FFFFFF",
+      "brand": "#047857",
+      "brandPrimary": "#047857",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#059669",
+      "onBrandSecondary": "#FFFFFF",
+      "brandTertiary": "#D1FAE5",
+      "onBrandTertiary": "#065F46",
+      "success": "#10B981",
+      "onSuccess": "#FFFFFF",
+      "warning": "#F59E0B",
+      "onWarning": "#FFFFFF",
+      "error": "#EF4444",
+      "onError": "#FFFFFF",
+      "info": "#3B82F6",
+      "onInfo": "#FFFFFF",
+      "border": "#E2E8F0",
+      "borderStrong": "#CBD5E1",
+      "divider": "#F1F5F9"
+    },
+    "typography": {
+      "displayFontFamily": "'Plus Jakarta Sans', sans-serif",
+      "textFontFamily": "'Geist', sans-serif",
+      "scale": {
+        "sm": 12,
+        "base": 14,
+        "lg": 16,
+        "xl": 20,
+        "2xl": 24,
+        "3xl": 32
+      },
+      "expo_font_packages": [
+        "@expo-google-fonts/plus-jakarta-sans",
+        "@expo-google-fonts/geist"
+      ]
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
+      "lg": 16,
+      "xl": 24,
+      "2xl": 32,
+      "3xl": 48
+    },
+    "radius_tokens": {
+      "sm": 6,
+      "md": 12,
+      "lg": 20,
+      "pill": 999
+    },
+    "shadow_tier": "1",
+    "icon": {
+      "style": "filled",
+      "web_library": "lucide-react",
+      "mobile_set": "Phosphor"
+    }
+  },
+  "web": {
+    "tech": "React (.js, not .tsx) + Tailwind + shadcn/ui primitives",
+    "css_variables": {
+      "root": {
+        "--background": "0 0% 100%",
+        "--foreground": "222 47% 11%",
+        "--card": "0 0% 100%",
+        "--card-foreground": "222 47% 11%",
+        "--popover": "0 0% 100%",
+        "--popover-foreground": "222 47% 11%",
+        "--primary": "163 94% 24%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "210 40% 98%",
+        "--secondary-foreground": "215 25% 27%",
+        "--muted": "214 32% 91%",
+        "--muted-foreground": "215 20% 65%",
+        "--accent": "210 40% 96%",
+        "--accent-foreground": "222 47% 11%",
+        "--destructive": "0 84% 60%",
+        "--destructive-foreground": "0 0% 100%",
+        "--border": "214 32% 91%",
+        "--input": "214 32% 91%",
+        "--ring": "163 94% 24%"
+      },
+      "dark": {
+        "--background": "222 47% 11%",
+        "--foreground": "210 40% 98%",
+        "--card": "222 47% 11%",
+        "--card-foreground": "210 40% 98%",
+        "--popover": "222 47% 11%",
+        "--popover-foreground": "210 40% 98%",
+        "--primary": "163 94% 24%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "217 32% 17%",
+        "--secondary-foreground": "210 40% 98%",
+        "--muted": "217 32% 17%",
+        "--muted-foreground": "215 20% 65%",
+        "--accent": "217 32% 17%",
+        "--accent-foreground": "210 40% 98%",
+        "--destructive": "0 62% 30%",
+        "--destructive-foreground": "210 40% 98%",
+        "--border": "217 32% 17%",
+        "--input": "217 32% 17%",
+        "--ring": "163 94% 24%"
+      }
+    },
+    "color_rules": [
+      "Tier Colors STRICT MAP (Staff Dashboard): RED (Urgent/Top Tier) = bg-red-500, YELLOW (High Tier) = bg-amber-500, GREEN (Medium Tier) = bg-emerald-500, BLUE (Low Tier) = bg-blue-500, GREY (Unmatched) = bg-slate-300.",
+      "Unmatched GREY cards must look distinct-in-kind: flatten the shadow (shadow-none), set surface to transparent or muted (bg-slate-50), and use grey borders.",
+      "Kiosk strictly uses brand colors (Emerald) and celebratory tones; zero exposure of the Tier mapping colors in front of doctors."
+    ],
+    "typography": {
+      "headings": {
+        "font_family": "'Plus Jakarta Sans', sans-serif",
+        "h1": "text-4xl sm:text-5xl lg:text-6xl",
+        "h2": "text-2xl sm:text-3xl lg:text-4xl",
+        "h3": "text-xl sm:text-2xl",
+        "h4": "text-lg sm:text-xl",
+        "styles": "tracking-tight font-medium"
+      },
+      "body": {
+        "font_family": "'Geist', sans-serif",
+        "styles": "leading-relaxed text-base text-foreground/80"
+      },
+      "labels": {
+        "styles": "uppercase text-xs tracking-wider font-semibold text-muted-foreground"
+      }
+    },
+    "layout": "Control Room Grid for Admin (dense, tabular, high-signal data). Tablet/Kiosk uses massive centered layout with wide margins (max-w-2xl mx-auto) for standing interaction. Dashboard uses multi-column feed (masonry or row-based) highlighting the dual tier color bands prominently on the leading edge.",
+    "surface_microtheme": "Crystal Glass for Kiosk UI overlays (backdrop-blur-xl bg-white/70); Grid Borders for Admin Console.",
+    "navigation_header": "Staff/Admin: Solid background header with hard bottom border. Kiosk: NO navigation header (locked immersive mode), just a small subtle reset/admin logo in the corner.",
+    "components_strategy": {
+      "marketing_pages": "Wheel/Kiosk uses pure HTML/Tailwind and Canvas/Motion animations for the game experience.",
+      "interactive_logic": "Admin and Dashboard use shadcn (Dialog, Table, Select, Switch) heavily customized for data density.",
+      "icons": "lucide-react, 24px default, 32px for Kiosk buttons.",
+      "buttons": "Pill-shaped (rounded-full) and oversized (h-14, text-lg) for Kiosk. Standard rounded-md for Admin."
+    },
+    "glassmorphism": {
+      "enabled": true,
+      "recipe": "backdrop-blur-xl backdrop-saturate-150 bg-white/70 + 1px inner stroke border-white/40"
+    },
+    "motion": {
+      "hover_states": "Dashboard cards lift on hover (-translate-y-1) with shadow-lg.",
+      "page_transitions": "Fade-through (opacity 0 to 1) for Kiosk form steps.",
+      "buttons": "Scale down on press (active:scale-95), transition-transform duration-200 ease-out."
+    },
+    "data_testid": "Every form field, table row action, and Wheel spin button MUST have a data-testid."
+  },
+  "mobile": {
+    "navigation": "bottom_tabs",
+    "glassmorphism": {
+      "enabled": true,
+      "dos": [
+        "Use on sticky bottom CTA in Kiosk/Form views",
+        "Use on bottom tab bar for Staff app"
+      ],
+      "donts": [
+        "Do not blur dense feed cards or live tracking stats"
+      ]
+    },
+    "platform_libraries": {
+      "glass": {
+        "ios": "expo-glass-effect",
+        "android": "expo-blur",
+        "low_end_android_fallback": "solid surfaceSecondary"
+      },
+      "image": "expo-image",
+      "blur": "expo-blur",
+      "bottom_sheet": "@gorhom/bottom-sheet",
+      "animation": "react-native-reanimated",
+      "gesture": "react-native-gesture-handler"
+    },
+    "haptics": {
+      "events": {
+        "spin_wheel": "impactHeavy",
+        "form_submit": "notificationSuccess",
+        "tab_switch": "selection",
+        "win_celebration": "notificationSuccess"
+      }
+    },
+    "safe_area": "All screens wrap in SafeAreaView. Bottom tab bar respects safe area.",
+    "touch_targets": ">=64x64pt for iPad Kiosk inputs. >=44x44pt for Staff Mobile App."
+  },
+  "screens": [
+    {
+      "name": "Admin Console",
+      "surface": "web",
+      "purpose": "Configure CSV mappings, scores, prize wheel rules, and Twilio alerts.",
+      "states": {
+        "loading": "Skeleton rows in table.",
+        "empty": "Illustration of folder + 'Upload first CSV'.",
+        "error": "Red banner at top 'Failed to parse CSV' + Retry."
+      },
+      "layout": "Bento grid logic: col-span-3 for main CSV staging, col-span-1 for side configuration forms (Thresholds/Wheel weights)."
+    },
+    {
+      "name": "Staff Dashboard",
+      "surface": "both",
+      "purpose": "Live auto-refreshing feed of captured leads allowing reps to spot high-value targets.",
+      "states": {
+        "loading": "Centered spinner + 'Syncing live leads...'",
+        "empty": "Empty state illustration + 'No leads captured yet. Ensure kiosk is online.'",
+        "error": "Toast notification: 'Live sync disconnected. Retrying...'"
+      },
+      "layout": "Row-based feed (mobile) or 2-3 column grid (web). Each card features TWO vertical color bands (Left border or top-right pill group) for 340B and RPM tiers. Grey cards intentionally flat/dimmed."
+    },
+    {
+      "name": "Doctor Kiosk Form",
+      "surface": "web",
+      "purpose": "3-screen landscape iPad form capturing doctor details rapidly.",
+      "states": {
+        "loading": "Smooth fade between steps.",
+        "empty": "N/A - Data entry form.",
+        "error": "Inline validation in red text."
+      },
+      "layout": "Landscape locked. Single massive column. Huge text inputs and interest chips. Floating sticky bottom primary CTA in the thumb zone. Progress bar at top."
+    },
+    {
+      "name": "Prize Wheel",
+      "surface": "web",
+      "purpose": "Full-screen celebratory edge-to-edge game triggered after form submission.",
+      "states": {
+        "loading": "Instantly pre-loaded.",
+        "empty": "N/A",
+        "error": "Silent fallback to static winning state if animation fails."
+      },
+      "layout": "Immersive takeover. Wheel centered, huge SPIN button. Upon win, wheel transitions into a celebratory winning modal with redemption code."
+    }
+  ],
+  "images": {
+    "medical_background": {
+      "url": "https://images.unsplash.com/photo-1743657166981-8d8e11d03c3e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxjbGVhbiUyMG1lZGljYWwlMjBhYnN0cmFjdCUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzg3MTczMzQ4fDA&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1743657166981-8d8e11d03c3e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxjbGVhbiUyMG1lZGljYWwlMjBhYnN0cmFjdCUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzg3MTczMzQ4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Clean medical abstract background",
+      "category": "background",
+      "description": "Subtle, clean background to be used behind the Kiosk Form screens at 20-30% opacity to prevent clinical starkness.",
+      "surface": "both"
+    },
+    "wheel_illustration": {
+      "url": "https://images.unsplash.com/photo-1573788583106-acf6c8f3f0b5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHwxfHxwcml6ZSUyMHdoZWVsfGVufDB8fHx8MTc4NzE3MzM0OHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Spin the prize wheel game",
+      "category": "hero",
+      "description": "Visual reference or fallback for the prize wheel. The wheel UI should ideally be built in code/canvas, but this serves as a thematic backdrop or loading poster.",
+      "surface": "web"
+    },
+    "lead_empty_state": {
+      "url": "https://images.unsplash.com/photo-1743046813915-94cf6d5e6942?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwzfHxjbGVhbiUyMG1lZGljYWwlMjBhYnN0cmFjdCUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzg3MTczMzQ4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract soft background",
+      "category": "empty_state",
+      "description": "Use as a card-fill or illustration backing when the Staff Dashboard has zero leads captured.",
+      "surface": "both"
+    }
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL ABSTRACTION: The Doctor-facing Kiosk must NEVER display scoring logic, medicare data, or dollar amounts. It is purely a lead capture form followed by a fun prize wheel.",
+    "TIER BANDS: Implement the Staff Dashboard lead cards with TWO distinct color bands (340B tier, RPM tier) using the explicit colors: bg-red-500, bg-amber-500, bg-emerald-500, bg-blue-500, bg-slate-300.",
+    "GREY CARD DE-EMPHASIS: Grey (unmatched) lead cards must be distinct-in-kind. Strip their drop-shadow, give them a subtle bg-slate-50 background, and lower the opacity of non-essential text so high-value (Red/Yellow/Green) cards pop immediately.",
+    "KIOSK UI (IPAD): The Kiosk forms must use oversized tap targets (h-14 buttons, large chips) to accommodate standing users holding drinks. Do not use standard small web forms.",
+    "PRIZE WHEEL: Use canvas/HTML5 (e.g. canvas-confetti, react-custom-roulette) for the wheel and celebration. Ensure the winning spin replaces the wheel interface with a clear 'Copy Code'/'Redeem' state.",
+    "ADMIN CONSOLE: Use a data-dense, functional 'Control Room' grid for the CMS/CSV upload section. Maximize screen real estate."
+  ]
+}
