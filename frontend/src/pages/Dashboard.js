@@ -4,7 +4,7 @@ import { api, wsUrl, money } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { TIER_STYLES } from "@/components/TierBadge";
 import {
-  Activity, WifiOff, Bell, Download, Filter, UserPlus, StickyNote, CalendarPlus,
+  Activity, WifiOff, Bell, Download, Filter, UserPlus, StickyNote, ExternalLink,
   LogOut, Settings2, RefreshCw, AlertTriangle, CheckCircle2, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ function beepGreen() {
   if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
 }
 
-function LeadCard({ lead, onAssign, onNote }) {
+function LeadCard({ lead, onAssign, onNote, onOpen }) {
   const grey = lead.match_status === "unresolved" || (lead.tier_340b === "GREY" && lead.tier_rpm === "GREY");
   const s340 = TIER_STYLES[lead.tier_340b] || TIER_STYLES.GREY;
   const srpm = TIER_STYLES[lead.tier_rpm] || TIER_STYLES.GREY;
@@ -38,10 +38,10 @@ function LeadCard({ lead, onAssign, onNote }) {
       data-testid={`lead-card-${lead.id}`}
       className={`relative flex overflow-hidden rounded-xl border transition-all ${grey ? "border-slate-200 bg-slate-50 shadow-none" : "border-slate-200 bg-white shadow-sm hover:-translate-y-1 hover:shadow-lg"}`}
     >
-      {/* dual tier bands */}
+      {/* dual tier bands — green-shaded 340B on top, RPM below */}
       <div className="flex w-3 flex-shrink-0 flex-col">
-        <div className={`flex-1 ${s340.band}`} title={`340B ${lead.tier_340b}`} />
-        <div className={`flex-1 ${srpm.band}`} title={`RPM ${lead.tier_rpm}`} />
+        <div className="flex-1" style={{ backgroundColor: lead.color_340b || "#cbd5e1" }} title={`340B ${lead.shade_340b || lead.tier_340b}`} />
+        <div className="flex-1" style={{ backgroundColor: lead.color_rpm || "#cbd5e1" }} title={`RPM ${lead.tier_rpm}`} />
       </div>
       <div className="flex-1 p-4">
         <div className="flex items-start justify-between">
@@ -86,9 +86,9 @@ function LeadCard({ lead, onAssign, onNote }) {
         </div>
 
         <div className="mt-3 flex gap-2">
+          <button data-testid={`open-${lead.id}`} onClick={() => onOpen(lead)} className="flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white"><ExternalLink className="h-3.5 w-3.5" /> Open</button>
           <button data-testid={`assign-${lead.id}`} onClick={() => onAssign(lead)} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><UserPlus className="h-3.5 w-3.5" /> Assign to me</button>
           <button data-testid={`note-${lead.id}`} onClick={() => onNote(lead)} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><StickyNote className="h-3.5 w-3.5" /> Note</button>
-          <button onClick={() => toast.success("Meeting request sent")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><CalendarPlus className="h-3.5 w-3.5" /> Meeting</button>
         </div>
       </div>
     </div>
@@ -193,6 +193,7 @@ export default function Dashboard() {
               <Bell className="h-4 w-4" />
               {failedAlerts.length > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />}
             </button>
+            <button data-testid="nav-leads" onClick={() => nav("/leads")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Filter className="h-3.5 w-3.5" /> Leads</button>
             <button data-testid="export-csv" onClick={() => fetchExport("csv")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</button>
             <button data-testid="export-xlsx" onClick={() => fetchExport("xlsx")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> XLSX</button>
             {user?.role === "admin" && <button onClick={() => nav("/admin")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Settings2 className="h-4 w-4" /></button>}
@@ -255,7 +256,7 @@ export default function Dashboard() {
             No leads captured yet. Ensure the kiosk is online.
           </div>
         )}
-        {leads.map((lead) => <LeadCard key={lead.id} lead={lead} onAssign={assign} onNote={addNote} />)}
+        {leads.map((lead) => <LeadCard key={lead.id} lead={lead} onAssign={assign} onNote={addNote} onOpen={() => nav(`/lead/${lead.id}`)} />)}
       </div>
 
       {/* Alerts drawer */}

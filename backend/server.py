@@ -112,6 +112,14 @@ async def startup():
             },
             "ceiling_per_hour": 20})
 
+    # Seed default event.
+    if await db.events.count_documents({"id": "default"}) == 0:
+        await db.events.insert_one({
+            "id": "default", "name": "Default Event", "convention_state": "TX",
+            "color_scheme": {"primary": "#047857", "accent": "#10B981"},
+            "associate_ids": [], "prize_set_id": None,
+            "created_at": datetime.now(timezone.utc).isoformat()})
+
     logger.info("BoothIQ startup complete")
 
 

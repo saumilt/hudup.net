@@ -27,7 +27,7 @@ export default function IngestionPanel() {
     setLive(r.data.live ? { ...r.data.live, physician_count: r.data.physician_count } : null);
   }, []);
 
-  useEffect(() => { loadSessions(); loadLive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadSessions(); loadLive(); }, []);
 
   const createSession = async () => {
     if (!newName.trim()) return;

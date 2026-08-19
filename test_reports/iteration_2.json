@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 2: (1) BOM ingestion bug fix VERIFIED with the real /tmp/sample1000.csv — coverage matches all asserted numbers exactly (unique_npis=45, total_rows=1000, min_npi=1003000126, max_npi=1003004201, estimated_share_pct>0, preview detected_mapping npi=0/tot_clms=10/tot_cost=13); NPI 1003000126 is correctly summed across duplicate rows with computed avg_per_claim. (2) Events CRUD, kiosk /events + /config?event_id=default, cannot-delete-default rule all pass. (3) Green shading verified: matched GREEN 340B lead persists shade_340b in {GREEN,GREEN+,GREEN++} with matching hex; kiosk /leads response still returns ONLY {id, spin_available}. (4) Lead detail (GET/schedule/note/assign) all persist and require auth. (5) SMS alert body includes a [#RRGGBB] color code and Open: <APP_URL>/lead/<id> link and status is set on alert_logs. (6) Frontend web e2e: Launcher event dropdown + Launch Kiosk, Admin Events tab (first) + all 5 other tabs present, Dashboard renders dual-hex tier bands with lead cards, /leads screen renders full filter table w/ event/340B/RPM/match/associate/state/specialty/interest/sort + CSV+XLSX + Open per row, /lead/:id loads with dual tier bar, tier badges, follow-up (callback_date + appointment_at + Save) and Notes with Add. 16/16 backend pytest cases pass this iteration; previous 34 tests still exist.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Dashboard header", "issues": ["No explicit 'Leads' nav button/link visible in the top bar. Users must navigate to /leads by URL or via the Open button on a lead card. Spec called for a 'Leads nav to /leads' in the dashboard."]},
+        {"screen": "Dashboard/Leads select filters", "issues": ["Console: React hydration warning 'span cannot be a child of option' — same as iter 1, comes from Emergent's ve-dynamic dev overlay wrapping option children, not app source. Cosmetic dev-only."]},
+        {"screen": "Dashboard", "issues": ["Transient WS warning 'closed before connection established' during navigation — same as iter 1, not blocking."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_bug_and_features.py",
+    "/app/backend/tests/test_boothiq_api.py",
+    "/app/test_reports/pytest/pytest_results_iter2.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add a visible 'Leads' nav button/link on the Dashboard header that routes to /leads (currently /leads is only reachable via URL bar or via the Open button on a lead card).",
+    "OPTIONAL (dead code / minor): /app/frontend/src/pages/LeadsScreen.js line 29 has `Object.entries(f).filter(([, v]) => v && ['event_id'].includes('event_id'))` — the `.includes('event_id')` on a literal array is always true; the intended check was likely `['event_id'].includes(key)`. The `params` variable computed on that line is unused (the real request uses `f.event_id ? {event_id: f.event_id} : {}` directly), so no runtime impact, but the line should be removed or fixed.",
+    "OPTIONAL: routes_admin.upload_chunk still appends chunks in arrival order without enforcing `index` sequencing — an out-of-order client could corrupt the CSV. (Carried over from iter 1.)"
+  ],
+  "critical_code_review_comments": [
+    "routes_admin._process_file / preview_file now correctly use encoding='utf-8-sig' and _norm strips \\ufeff — the BOM bug fix is applied at both the mapping-detection layer AND during row streaming, so the fix is complete.",
+    "routes_kiosk.create_lead correctly writes shade_340b/color_340b/color_rpm to the lead doc and the kiosk response omits them (returns only {id, spin_available}).",
+    "routes_kiosk._dispatch_alerts builds a body with [color] + shade + label + name + specialty + loc + figures + booth + Open link — link uses APP_URL from env; if APP_URL is empty the log body ends with 'Open: ' (empty). Consider skipping the Open segment when APP_URL is not configured (cosmetic).",
+    "routes_admin.events endpoints correctly forbid deleting id='default' (400).",
+    "LeadsScreen.js has a small dead-code filter (see action_items) that should be cleaned up."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bug_and_features.py (new — 16 tests covering BOM fix + events + kiosk config + green shade + lead detail + SMS body)"
+  ],
+  "success_rate": {"backend": "100% (16/16 new iter 2 tests; prior 34 still available)", "frontend": "100% of critical flows (Launcher event dropdown + Launch, Admin Events tab + all panels, Dashboard cards with dual hex bands, /leads filter+export+open, /lead/:id save/note)"},
+  "test_credentials": "admin@boothiq.com / 482913, staff@boothiq.com / 715264 (verified)",
+  "seed_data_creation": "POST /api/admin/seed-sample used to populate 700 physicians for green-shade + SMS-body tests. BOM CSV /tmp/sample1000.csv used for the bug-fix regression (produces its own session with 45 unique NPIs / 1000 rows).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Two backend test files now live under /app/backend/tests/: test_boothiq_api.py (baseline 34 tests, iter 1) and test_bug_and_features.py (iter 2, 16 tests focused on the BOM fix + new features). The BOM regression test asserts the EXACT numbers from the review request (unique_npis=45, min=1003000126, max=1003004201, mapping npi=0/tot_clms=10/tot_cost=13). If /tmp/sample1000.csv is ever missing, re-download from https://customer-assets-lqy194kg.emergentagent.net/job_prize-wheel-hub-4/artifacts/pyw8ii20_sample_1000_records.csv .",
+  "rca of the issue": "Original bug: CMS CSV starts with the UTF-8 BOM sequence 0xEF 0xBB 0xBF, so the first header 'Prscrbr_NPI' was read as '\\ufeffPrscrbr_NPI' and the COLUMN_MAP lookup missed it. With no 'npi' key in the mapping, every row hit the KeyError branch in _process_file and was skipped -> physicians collection was empty -> max_npi=0 -> estimated_share_pct=0 and warnings said 'Highest NPI is 0, file may be truncated'. Fix applied in /app/backend/routes_admin.py: (a) open both preview and streaming CSV with encoding='utf-8-sig' (auto-strips BOM), and (b) _norm() strips a stray \\ufeff from any header just in case. Confirmed working: preview now returns detected_mapping={npi:0, last_name:1, first_name:2, city:3, state:4, specialty:5, tot_clms:10, tot_cost:13} and finalize returns unique_npis=45, total_rows=1000, min_npi=1003000126, max_npi=1003004201, estimated_share_pct=~0.1% > 0."
+}

@@ -14,19 +14,22 @@ router = APIRouter(prefix="/api/dashboard")
 @router.get("/leads")
 async def list_leads(
     request: Request,
-    event_id: str = "default",
+    event_id: str | None = None,
     tier_340b: str | None = None,
     tier_rpm: str | None = None,
     specialty: str | None = None,
     state: str | None = None,
     interest: str | None = None,
     assigned_to: str | None = None,
+    associate_id: str | None = None,
     match_status: str | None = None,
     sort: str = "created_at",
     limit: int = 200,
 ):
     await get_current_user(request)
-    q = {"event_id": event_id}
+    q = {}
+    if event_id:
+        q["event_id"] = event_id
     if tier_340b:
         q["tier_340b"] = tier_340b
     if tier_rpm:
@@ -39,6 +42,8 @@ async def list_leads(
         q["interests"] = interest
     if assigned_to:
         q["assigned_to"] = assigned_to
+    if associate_id:
+        q["associate_id"] = associate_id
     if match_status:
         q["match_status"] = match_status
     sort_map = {
@@ -52,22 +57,37 @@ async def list_leads(
     return leads
 
 
+@router.get("/leads/{lead_id}")
+async def get_lead(lead_id: str, request: Request):
+    await get_current_user(request)
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        return {"error": "not_found"}
+    return lead
+
+
 @router.get("/counters")
-async def counters(request: Request, event_id: str = "default"):
+async def counters(request: Request, event_id: str | None = None):
     await get_current_user(request)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    base = {"created_at": {"$gte": today}}
+    if event_id:
+        base["event_id"] = event_id
     pipeline = [
-        {"$match": {"event_id": event_id, "created_at": {"$gte": today}}},
+        {"$match": base},
         {"$group": {"_id": "$tier_340b", "count": {"$sum": 1}}},
     ]
     by_340b = {d["_id"]: d["count"] async for d in db.leads.aggregate(pipeline)}
     rpm_pipeline = [
-        {"$match": {"event_id": event_id, "created_at": {"$gte": today}}},
+        {"$match": base},
         {"$group": {"_id": "$tier_rpm", "count": {"$sum": 1}}},
     ]
     by_rpm = {d["_id"]: d["count"] async for d in db.leads.aggregate(rpm_pipeline)}
-    spins = await db.leads.count_documents({"event_id": event_id, "spun": True})
-    total_today = await db.leads.count_documents({"event_id": event_id, "created_at": {"$gte": today}})
+    spin_q = {"spun": True}
+    if event_id:
+        spin_q["event_id"] = event_id
+    spins = await db.leads.count_documents(spin_q)
+    total_today = await db.leads.count_documents(base)
     ps = await db.prize_sets.find_one({"active": True}, {"_id": 0})
     prizes_remaining = 0
     if ps:
@@ -100,6 +120,23 @@ async def add_note(lead_id: str, data: NoteInput, request: Request):
     return note
 
 
+class ScheduleInput(BaseModel):
+    callback_date: str | None = None
+    appointment_at: str | None = None
+
+
+@router.post("/leads/{lead_id}/schedule")
+async def schedule_lead(lead_id: str, data: ScheduleInput, request: Request):
+    await get_current_user(request)
+    patch = {}
+    if data.callback_date is not None:
+        patch["callback_date"] = data.callback_date
+    if data.appointment_at is not None:
+        patch["appointment_at"] = data.appointment_at
+    await db.leads.update_one({"id": lead_id}, {"$set": patch})
+    return {"ok": True, **patch}
+
+
 @router.get("/alerts")
 async def alert_logs(request: Request, limit: int = 100):
     await get_current_user(request)
@@ -108,13 +145,15 @@ async def alert_logs(request: Request, limit: int = 100):
 
 EXPORT_COLUMNS = [
     ("npi", "NPI"), ("match_status", "Match Status"),
-    ("tier_340b", "340B Tier"), ("tier_rpm", "RPM Tier"),
+    ("tier_340b", "340B Tier"), ("shade_340b", "340B Shade"), ("tier_rpm", "RPM Tier"),
     ("first_name", "First Name"), ("last_name", "Last Name"),
     ("specialty", "Specialty"), ("city", "City"), ("state", "State"),
     ("phone", "Phone"), ("email", "Email"), ("practice", "Practice"),
     ("tot_clms", "Total Claims"), ("tot_cost", "Total Drug Cost"),
     ("avg_per_claim", "Avg Per Claim"), ("interests", "Interests"),
-    ("assigned_to", "Assigned To"), ("created_at", "Captured At"),
+    ("event_id", "Event"), ("associate_name", "Associate"),
+    ("assigned_to", "Assigned To"), ("callback_date", "Callback Date"),
+    ("appointment_at", "Appointment"), ("created_at", "Captured At"),
 ]
 
 
@@ -132,9 +171,10 @@ def _row(lead):
 
 
 @router.get("/export")
-async def export_leads(request: Request, event_id: str = "default", fmt: str = "csv"):
+async def export_leads(request: Request, event_id: str | None = None, fmt: str = "csv"):
     await get_current_user(request)
-    leads = await db.leads.find({"event_id": event_id}, {"_id": 0}).sort("created_at", -1).to_list(100000)
+    q = {"event_id": event_id} if event_id else {}
+    leads = await db.leads.find(q, {"_id": 0}).sort("created_at", -1).to_list(100000)
     rows = [_row(l) for l in leads]
     headers = [label for _, label in EXPORT_COLUMNS]
     keys = [k for k, _ in EXPORT_COLUMNS]

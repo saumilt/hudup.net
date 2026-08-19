@@ -32,7 +32,7 @@ COLUMN_MAP = {
 
 
 def _norm(h: str) -> str:
-    return h.strip().lower().replace(" ", "_")
+    return h.replace("\ufeff", "").strip().lower().replace(" ", "_")
 
 
 def detect_mapping(headers: list[str]) -> dict:
@@ -125,7 +125,7 @@ async def preview_file(sid: str, fid: str, admin=Depends(require_admin)):
     p = UPLOAD_DIR / sid / f"{fid}.part"
     if not p.exists():
         raise HTTPException(404, "File not found")
-    with open(p, "r", encoding="utf-8", errors="replace") as f:
+    with open(p, "r", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.reader(f)
         headers = next(reader, [])
         sample = next(reader, [])
@@ -155,7 +155,7 @@ async def _process_file(sid: str, fid: str):
     batch = []
     from pymongo import UpdateOne
 
-    with open(p, "r", encoding="utf-8", errors="replace") as f:
+    with open(p, "r", encoding="utf-8-sig", errors="replace") as f:
         reader = csv.reader(f)
         headers = next(reader, [])
         mapping = (s.get("column_mapping")) or detect_mapping(headers)
@@ -384,6 +384,42 @@ async def save_alert_rules(data: AlertRulesInput, admin=Depends(require_admin)):
         {"$set": {"rules": data.rules, "ceiling_per_hour": data.ceiling_per_hour}},
         upsert=True,
     )
+    return {"ok": True}
+
+
+# ---------------- Events ----------------
+class EventInput(BaseModel):
+    name: str
+    convention_state: str = "TX"
+    color_scheme: dict = {"primary": "#047857", "accent": "#10B981"}
+    associate_ids: list = []
+    prize_set_id: str | None = None
+
+
+@router.get("/events")
+async def list_events(admin=Depends(require_admin)):
+    return await db.events.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@router.post("/events")
+async def create_event(data: EventInput, admin=Depends(require_admin)):
+    doc = {"id": str(uuid.uuid4()), **data.model_dump(),
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.events.insert_one(dict(doc))
+    return doc
+
+
+@router.put("/events/{eid}")
+async def update_event(eid: str, data: EventInput, admin=Depends(require_admin)):
+    await db.events.update_one({"id": eid}, {"$set": data.model_dump()})
+    return await db.events.find_one({"id": eid}, {"_id": 0})
+
+
+@router.delete("/events/{eid}")
+async def delete_event(eid: str, admin=Depends(require_admin)):
+    if eid == "default":
+        raise HTTPException(400, "Cannot delete the default event")
+    await db.events.delete_one({"id": eid})
     return {"ok": True}
 
 

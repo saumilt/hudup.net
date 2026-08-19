@@ -9,6 +9,8 @@ import Kiosk from "@/pages/Kiosk";
 import Wheel from "@/pages/Wheel";
 import Dashboard from "@/pages/Dashboard";
 import Admin from "@/pages/Admin";
+import LeadsScreen from "@/pages/LeadsScreen";
+import LeadDetail from "@/pages/LeadDetail";
 
 function App() {
   return (
@@ -24,6 +26,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/leads"
+            element={
+              <ProtectedRoute>
+                <LeadsScreen />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lead/:leadId"
+            element={
+              <ProtectedRoute>
+                <LeadDetail />
               </ProtectedRoute>
             }
           />

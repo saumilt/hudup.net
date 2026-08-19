@@ -29,6 +29,32 @@ CHRONIC_CARE_SPECIALTIES = [
 
 RPM_MULTIPLIER = 1.25
 
+# Base tier colors (hex) used on the dashboard bands and in SMS text.
+TIER_HEX = {
+    "GREEN": "#10B981",
+    "YELLOW": "#F59E0B",
+    "BLUE": "#3B82F6",
+    "RED": "#EF4444",
+    "GREY": "#CBD5E1",
+}
+
+
+def green_shade(avg_per_claim: float):
+    """Within 340B GREEN, shade by avg per claim: $4k light -> $7k darker -> $10k+ darkest."""
+    if avg_per_claim >= 10000:
+        return ("GREEN++", "#047857")   # darkest green
+    if avg_per_claim >= 7000:
+        return ("GREEN+", "#10B981")    # darker green
+    return ("GREEN", "#34D399")         # light green
+
+
+def tier_color_340b(tier: str, avg_per_claim: float):
+    """Return (shade_label, hex) for a 340B tier, applying green shading."""
+    if tier == "GREEN":
+        return green_shade(avg_per_claim or 0)
+    return (tier, TIER_HEX.get(tier, "#CBD5E1"))
+
+
 
 def is_chronic_care(specialty: str) -> bool:
     if not specialty:

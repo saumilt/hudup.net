@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from deps import db, ws_manager, get_thresholds, get_live_session, get_setting, send_sms
-from scoring import score_340b, score_rpm
+from scoring import score_340b, score_rpm, tier_color_340b, TIER_HEX
 from matching import npi_is_valid, match_status_from_collisions, is_matched
 
 router = APIRouter(prefix="/api/kiosk")
@@ -31,18 +31,40 @@ US_STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "
              "WI", "WY"]
 
 
+@router.get("/events")
+async def kiosk_events():
+    """Public list of events for kiosk setup on the front page (no scoring data)."""
+    events = await db.events.find({}, {"_id": 0, "id": 1, "name": 1, "color_scheme": 1, "convention_state": 1}).to_list(100)
+    return events
+
+
 @router.get("/config")
-async def kiosk_config():
-    ps = await db.prize_sets.find_one({"active": True}, {"_id": 0})
+async def kiosk_config(event_id: str = "default"):
+    event = await db.events.find_one({"id": event_id}, {"_id": 0}) or {}
+    # Prize set: event's set if configured, else the globally active set.
+    ps = None
+    if event.get("prize_set_id"):
+        ps = await db.prize_sets.find_one({"id": event["prize_set_id"]}, {"_id": 0})
+    if not ps:
+        ps = await db.prize_sets.find_one({"active": True}, {"_id": 0})
     segments = []
     if ps:
-        # Only expose visual fields to the kiosk (no weights/inventory internals).
         for s in ps["segments"]:
             inv = s.get("inventory")
             if inv is None or inv > 0:
                 segments.append({"id": s["id"], "label": s["label"], "color": s["color"]})
+    # Associates working this event (name only — used for the kiosk dropdown).
+    associates = []
+    if event.get("associate_ids"):
+        roster = await db.staff_roster.find({"id": {"$in": event["associate_ids"]}}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
+        associates = roster
+    convention_state = event.get("convention_state") or await get_setting("convention_state", "TX")
     return {
-        "convention_state": await get_setting("convention_state", "TX"),
+        "event_id": event.get("id", "default"),
+        "event_name": event.get("name", "Default Event"),
+        "color_scheme": event.get("color_scheme", {"primary": "#047857", "accent": "#10B981"}),
+        "convention_state": convention_state,
+        "associates": associates,
         "common_specialties": COMMON_SPECIALTIES,
         "all_specialties": ALL_SPECIALTIES,
         "states": US_STATES,
@@ -93,6 +115,8 @@ class LeadInput(BaseModel):
     consent_text: str = ""
     device_id: str | None = None
     event_id: str = "default"
+    associate_id: str | None = None
+    associate_name: str | None = None
     client_created_at: str | None = None  # for offline delay detection
 
 
@@ -163,6 +187,10 @@ async def create_lead(data: LeadInput):
         except Exception:
             pass
 
+    # Green-shaded 340B color + base RPM color for the dashboard bands and SMS text.
+    shade_340b, color_340b = tier_color_340b(tier_340b, (med.get("avg_per_claim") or 0))
+    color_rpm = TIER_HEX.get(tier_rpm, "#CBD5E1")
+
     lead = {
         "id": lead_id,
         "first_name": data.first_name, "last_name": data.last_name,
@@ -176,11 +204,14 @@ async def create_lead(data: LeadInput):
         "consent_timestamp": now.isoformat(),
         "match_status": status, "collision_count": collisions,
         "tier_340b": tier_340b, "tier_rpm": tier_rpm,
+        "shade_340b": shade_340b, "color_340b": color_340b, "color_rpm": color_rpm,
         "medicare": med,
         "device_id": data.device_id, "booth": booth,
         "event_id": data.event_id,
+        "associate_id": data.associate_id, "associate_name": data.associate_name,
         "spun": False, "prize": None,
         "assigned_to": None, "notes": [],
+        "callback_date": None, "appointment_at": None,
         "captured_offline": bool(data.client_created_at),
         "created_at": now.isoformat(),
     }
@@ -228,15 +259,23 @@ async def _dispatch_alerts(lead: dict, delayed: bool):
     triggered.sort(key=lambda x: priority.get(x[1], 9))
 
     med = lead.get("medicare", {})
+    # Alerts go to on-duty staff; if the event has assigned associates, scope to them.
+    event = await db.events.find_one({"id": lead.get("event_id", "default")}, {"_id": 0}) or {}
+    event_associates = event.get("associate_ids") or None
     for label, tier, recipients in triggered:
         roster = await db.staff_roster.find({"on_duty": True}, {"_id": 0}).to_list(200)
+        if event_associates:
+            roster = [r for r in roster if r["id"] in event_associates]
         if recipients != "all" and isinstance(recipients, list):
             roster = [r for r in roster if r["id"] in recipients]
         name = f"Dr. {lead['first_name']} {lead['last_name']}"
         loc = f"{lead.get('city') or ''} {lead.get('state') or ''}".strip()
         figures = f"{int(med.get('tot_clms') or 0):,} claims, {_fmt_money(med.get('tot_cost'))}, ${int(med.get('avg_per_claim') or 0):,}/claim"
-        link = f"{app_url}/dashboard?lead={lead['id']}" if app_url else ""
-        body = f"{tier} {label} — {name}, {lead.get('specialty') or 'Unknown'}, {loc}. {figures}. {lead.get('booth', '')}. {link}".strip()
+        # Color code carried into the text (green-shaded for 340B).
+        color = lead.get("color_340b") if label == "340B" else lead.get("color_rpm")
+        shade = lead.get("shade_340b") if label == "340B" else tier
+        link = f"{app_url}/lead/{lead['id']}" if app_url else ""
+        body = f"[{color}] {shade} {label} — {name}, {lead.get('specialty') or 'Unknown'}, {loc}. {figures}. {lead.get('booth', '')}. Open: {link}".strip()
 
         for staff in roster:
             # Dedup: never send twice for the same lead to the same staffer.

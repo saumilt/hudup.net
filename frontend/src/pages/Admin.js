@@ -1,14 +1,16 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Activity, Database, SlidersHorizontal, Gift, MessageSquare, Users, ArrowLeft, LogOut } from "lucide-react";
+import { Activity, Database, SlidersHorizontal, Gift, MessageSquare, Users, CalendarDays, ArrowLeft, LogOut } from "lucide-react";
 import IngestionPanel from "@/pages/admin/IngestionPanel";
 import ScoringPanel from "@/pages/admin/ScoringPanel";
 import PrizesPanel from "@/pages/admin/PrizesPanel";
 import AlertsPanel from "@/pages/admin/AlertsPanel";
 import RosterPanel from "@/pages/admin/RosterPanel";
+import EventsPanel from "@/pages/admin/EventsPanel";
 
 const TABS = [
+  { id: "events", label: "Events", icon: CalendarDays, C: EventsPanel },
   { id: "ingest", label: "Data Ingestion", icon: Database, C: IngestionPanel },
   { id: "scoring", label: "Scoring", icon: SlidersHorizontal, C: ScoringPanel },
   { id: "prizes", label: "Prize Wheel", icon: Gift, C: PrizesPanel },
@@ -17,7 +19,7 @@ const TABS = [
 ];
 
 export default function Admin() {
-  const [tab, setTab] = useState("ingest");
+  const [tab, setTab] = useState("events");
   const { logout } = useAuth();
   const nav = useNavigate();
   const Active = TABS.find((t) => t.id === tab).C;
