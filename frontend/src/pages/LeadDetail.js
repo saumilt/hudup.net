@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, money } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { TIER_STYLES } from "@/components/TierBadge";
-import { ArrowLeft, Loader2, UserPlus, CalendarClock, PhoneCall, Save, StickyNote } from "lucide-react";
+import { ArrowLeft, Loader2, UserPlus, CalendarClock, PhoneCall, Save, StickyNote, Layers } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LeadDetail() {
@@ -80,6 +80,40 @@ export default function LeadDetail() {
             <button data-testid="lead-assign" onClick={assign} className="mt-4 flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white active:scale-95"><UserPlus className="h-4 w-4" /> Assign to me</button>
           </div>
         </div>
+
+        {/* All captured CMS columns */}
+        {lead.cms_extra && (
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="mb-1 flex items-center gap-2 font-display font-bold"><Layers className="h-5 w-5 text-primary" /> All CMS Columns</h3>
+            <p className="mb-3 text-xs text-slate-400">Aggregated across {lead.cms_extra.row_count ?? "—"} drug rows for this NPI. Numeric measures are summed; categorical fields show the recorded value.</p>
+            {Object.keys(lead.cms_extra.extra || {}).length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Summed measures</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {Object.entries(lead.cms_extra.extra).map(([k, v]) => (
+                    <div key={k} className="rounded-lg bg-slate-50 p-2">
+                      <p className="truncate text-[10px] uppercase text-slate-400" title={k}>{k}</p>
+                      <p className="text-sm font-bold text-slate-800">{typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {Object.keys(lead.cms_extra.raw || {}).length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Recorded fields</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {Object.entries(lead.cms_extra.raw).map(([k, v]) => (
+                    <div key={k} className="rounded-lg bg-slate-50 p-2">
+                      <p className="truncate text-[10px] uppercase text-slate-400" title={k}>{k}</p>
+                      <p className="truncate text-sm font-medium text-slate-700" title={String(v)}>{String(v)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Scheduling */}
         <div className="rounded-xl border border-slate-200 bg-white p-5">

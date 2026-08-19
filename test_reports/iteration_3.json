@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 3 verifies the NEW 'capture all columns' behavior end-to-end. Ingestion of /tmp/sample1000.csv via chunked upload -> complete -> finalize yields the exact expected coverage (unique_npis=45, total_rows=1000, max_npi=1003004201). For NPI 1003000126 (2 CMS rows), physicians.row_count=2, physicians.extra sums are exact (Tot_30day_Fills=32, Tot_Day_Suply=32, Tot_Benes=32, GE65_Tot_Clms=32, GE65_Tot_Drug_Cst=6642.27), and physicians.raw carries Brnd_Name/Gnrc_Name/Prscrbr_State_FIPS='24'/Prscrbr_Type_Src='Claim-Specialty'. ID-like columns (Prscrbr_NPI, GE65_Sprsn_Flag, GE65_Bene_Sprsn_Flag, Prscrbr_State_FIPS, Prscrbr_Type_Src) are correctly excluded from `extra` and routed to `raw`. Top-level tot_clms=32 and tot_cost=6642.27 remain intact. Matched lead POST /api/kiosk/leads with npi=1003000126 -> confirmed status; GET /api/dashboard/leads/{id} returns full cms_extra {extra, raw, row_count}; the SAME kiosk response strictly returns only {id, spin_available} (privacy rule intact). Unmatched lead scores GREY with cms_extra=null. GET /api/dashboard/export?fmt=csv AND fmt=xlsx both include the dynamic tail: header contains 'Drug Rows', 'Sum Tot_Benes' (plus other Sum columns), and raw carriers Brnd_Name/Gnrc_Name. Regression: staff login, counters, events list, and one-spin-per-lead all work. Frontend web e2e: /lead/:id renders the 'All CMS Columns' section with SUMMED MEASURES + RECORDED FIELDS grids populated correctly (Tot_Benes=32, GE65_Tot_Drug_Cst=6,642.27, Brnd_Name=Abrysvo, Prscrbr_State_FIPS=24, etc.); Dashboard header has 'Leads' nav button (data-testid=nav-leads) routing to /leads; every lead card has an 'Open' button (data-testid=open-<id>). 11/11 backend pytest cases pass.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Dashboard / Leads select filters", "issues": ["Console hydration warning 'span cannot be a child of option' — same cosmetic dev-only warning noted in iterations 1 and 2, from Emergent's dev overlay wrapping <option> children. Not app source."]},
+        {"screen": "Dashboard", "issues": ["Transient WS warning 'WebSocket is closed before the connection is established' on navigation — same as prior iterations, not blocking."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_capture_all_columns.py",
+    "/app/backend/tests/test_bug_and_features.py",
+    "/app/backend/tests/test_boothiq_api.py",
+    "/app/test_reports/pytest/pytest_results_iter3.xml"
+  ],
+  "action_items": [
+    "(No blocking action items for the 'capture all columns' feature — all asserted numbers and behaviors match spec.)",
+    "OPTIONAL: The `xlsx` export currently writes the workbook to an in-memory buffer and streams it in one shot — for very large lead tables this could balloon memory. Consider write-only mode for large exports.",
+    "OPTIONAL (carried from iter 2): routes_admin.upload_chunk still appends chunks in arrival order without enforcing `index` sequencing — an out-of-order client could corrupt the CSV.",
+    "OPTIONAL (carried from iter 2): /app/frontend/src/pages/LeadsScreen.js line 29 dead-code filter (`['event_id'].includes('event_id')` — literal-in-literal always true; `params` unused). Cleanup only."
+  ],
+  "critical_code_review_comments": [
+    "routes_admin._process_file correctly classifies each 'other' column once from its first non-empty value into `num` or `txt`, uses $inc on `extra.<key>` for numerics, and $setOnInsert on `raw.<key>` for categoricals. ID-like heuristic 'fips|npi|flag|sprsn|_src' matches the spec and is applied per-column BEFORE _is_number check, correctly diverting Prscrbr_State_FIPS (all-digit but id-like) to raw.",
+    "routes_admin._san_key strips BOM, replaces '.' with '_', and strips leading '$' — safe for Mongo field keys.",
+    "routes_kiosk.create_lead correctly attaches cms_extra = {extra, raw, row_count} for matched leads and sets it to None for unmatched, while the kiosk response is still strictly {id, spin_available}.",
+    "routes_dashboard.export_leads builds the dynamic tail correctly: unions extra_keys/raw_keys across all leads, sorts them for deterministic column order, appends 'Drug Rows' + 'Sum <col>' + raw column names, and writes matching cells per lead (blank for leads without cms_extra). CSV+XLSX both include the tail.",
+    "LeadDetail.js correctly guards on `lead.cms_extra` and renders separate 'Summed measures' and 'Recorded fields' grids only if their respective object is non-empty. Numeric values are formatted with toLocaleString and maximumFractionDigits=2. Long keys/values are truncated with title tooltips.",
+    "Minor: routes_admin._process_file re-detects mapping using `detect_mapping(headers)` when s['column_mapping'] is None but also computes `skip_idx = set(mapping.values())` BEFORE any potential mapping-key error handling; if a required key is missing the row-loop KeyError branch silently skips every row. Not a bug for this CSV but worth defensively surfacing a mapping-incomplete error to the admin.",
+    "Minor: physicians.extra can grow unbounded across CSVs with many columns; consider capping the number of `extra` keys per doc or storing a separate `physician_extras` collection if future CSVs exceed Mongo's 16MB doc limit."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_capture_all_columns.py (new — 11 tests: ingestion aggregation with extra/raw split, id-like exclusion, matched-lead cms_extra + kiosk privacy, unmatched null cms_extra, CSV+XLSX export dynamic tail, staff-login/counters/events/one-spin regressions)"
+  ],
+  "success_rate": {"backend": "100% (11/11 iter3 tests; prior 34+16 tests still available)", "frontend": "100% of new UI (All CMS Columns section, Leads nav, Open button per card)"},
+  "test_credentials": "admin@boothiq.com / 482913, staff@boothiq.com / 715264 (both verified)",
+  "seed_data_creation": "Ingested /tmp/sample1000.csv into a fresh session ('iter3 capture-all') and marked it live. Created a matched-lead (Ardalan Enkeshafi, NPI 1003000126) via kiosk to verify cms_extra propagation + populate the export dynamic tail. Created one unmatched lead to verify cms_extra=null. The synthetic seed-sample was NOT used this iteration (real CSV directly).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Three backend test files now live under /app/backend/tests/: test_boothiq_api.py (iter1 baseline, 34 tests), test_bug_and_features.py (iter2, 16 tests: BOM fix + green shading + events + SMS body), test_capture_all_columns.py (iter3, 11 tests: capture-all-columns behavior). The iter3 test creates its OWN ingestion session, upserts /tmp/sample1000.csv, finalizes, and go-lives it — so it overrides whatever live session exists. If a downstream test needs the synthetic seed-sample data, call POST /api/admin/seed-sample again. Note: pytest.ini enables pytest-xdist parallel by default; the iter3 test file needs sequential fixture ordering for the Export class to see the matched lead, so it uses a dedicated `matched_lead_created` fixture rather than depending on the TestLeadCmsExtra class.",
+  "rca of the issue": ""
+}

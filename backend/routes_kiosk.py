@@ -163,12 +163,15 @@ async def create_lead(data: LeadInput):
         tier_rpm = score_rpm(True, clms, specialty)
         npi = phys.get("npi")
         med = {"tot_clms": clms, "tot_cost": cost, "avg_per_claim": avg}
+        cms_extra = {"extra": phys.get("extra", {}), "raw": phys.get("raw", {}),
+                     "row_count": phys.get("row_count")}
     else:
         tier_340b = "GREY"
         tier_rpm = "GREY"
         npi = data.npi if (data.npi and npi_is_valid(data.npi)) else None
         med = {"tot_clms": None, "tot_cost": None, "avg_per_claim": None}
         specialty = data.specialty or ""
+        cms_extra = None
 
     device = None
     booth = "Booth 1"
@@ -206,6 +209,7 @@ async def create_lead(data: LeadInput):
         "tier_340b": tier_340b, "tier_rpm": tier_rpm,
         "shade_340b": shade_340b, "color_340b": color_340b, "color_rpm": color_rpm,
         "medicare": med,
+        "cms_extra": cms_extra,
         "device_id": data.device_id, "booth": booth,
         "event_id": data.event_id,
         "associate_id": data.associate_id, "associate_name": data.associate_name,

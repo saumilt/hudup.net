@@ -35,6 +35,19 @@ def _norm(h: str) -> str:
     return h.replace("\ufeff", "").strip().lower().replace(" ", "_")
 
 
+def _is_number(v: str) -> bool:
+    try:
+        float(v)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _san_key(h: str) -> str:
+    """Mongo field keys can't contain '.' or start with '$'."""
+    return h.replace("\ufeff", "").strip().replace(".", "_").lstrip("$") or "col"
+
+
 def detect_mapping(headers: list[str]) -> dict:
     mapping = {}
     for idx, h in enumerate(headers):
@@ -159,6 +172,11 @@ async def _process_file(sid: str, fid: str):
         reader = csv.reader(f)
         headers = next(reader, [])
         mapping = (s.get("column_mapping")) or detect_mapping(headers)
+        # Capture EVERY column: sum numeric measures into `extra`, carry categoricals
+        # into `raw`. The 8 scoring/identity columns stay top-level for indexing.
+        skip_idx = set(mapping.values())
+        idx_headers = list(enumerate(headers))
+        col_type = {}  # idx -> "num" | "txt" (decided once from first non-empty value)
         for row in reader:
             try:
                 npi = row[mapping["npi"]].strip()
@@ -173,18 +191,41 @@ async def _process_file(sid: str, fid: str):
                 specialty = row[mapping["specialty"]].strip()
             except (KeyError, IndexError, ValueError):
                 continue
+
+            # Every other column.
+            extra_inc = {}
+            raw_set = {}
+            for idx, h in idx_headers:
+                if idx in skip_idx or idx >= len(row):
+                    continue
+                val = row[idx].strip()
+                if val == "":
+                    continue
+                t = col_type.get(idx)
+                if t is None:
+                    hl = h.lower()
+                    id_like = any(x in hl for x in ("fips", "npi", "flag", "sprsn", "_src"))
+                    t = "num" if (not id_like and _is_number(val)) else "txt"
+                    col_type[idx] = t
+                key = _san_key(h)
+                if t == "num":
+                    extra_inc[f"extra.{key}"] = extra_inc.get(f"extra.{key}", 0.0) + float(val)
+                else:
+                    raw_set[f"raw.{key}"] = val
+
+            inc = {"tot_clms": clms, "tot_cost": cost, "row_count": 1}
+            inc.update(extra_inc)
+            set_on_insert = {
+                "npi_int": int(npi) if npi.isdigit() else 0,
+                "last_name": last, "first_name": first,
+                "last_upper": last.upper(), "first_upper": first.upper(),
+                "first_initial": (first[:1].upper() if first else ""),
+                "city": city, "state": state.upper(), "specialty": specialty,
+            }
+            set_on_insert.update(raw_set)
             batch.append(UpdateOne(
                 {"session_id": sid, "npi": npi},
-                {
-                    "$inc": {"tot_clms": clms, "tot_cost": cost},
-                    "$setOnInsert": {
-                        "npi_int": int(npi) if npi.isdigit() else 0,
-                        "last_name": last, "first_name": first,
-                        "last_upper": last.upper(), "first_upper": first.upper(),
-                        "first_initial": (first[:1].upper() if first else ""),
-                        "city": city, "state": state.upper(), "specialty": specialty,
-                    },
-                },
+                {"$inc": inc, "$setOnInsert": set_on_insert},
                 upsert=True,
             ))
             rows += 1

@@ -175,9 +175,29 @@ async def export_leads(request: Request, event_id: str | None = None, fmt: str =
     await get_current_user(request)
     q = {"event_id": event_id} if event_id else {}
     leads = await db.leads.find(q, {"_id": 0}).sort("created_at", -1).to_list(100000)
-    rows = [_row(l) for l in leads]
-    headers = [label for _, label in EXPORT_COLUMNS]
-    keys = [k for k, _ in EXPORT_COLUMNS]
+
+    # Dynamic tail: EVERY captured CMS column (summed extras + carried raw fields).
+    extra_keys, raw_keys = set(), set()
+    for l in leads:
+        ce = l.get("cms_extra") or {}
+        extra_keys |= set((ce.get("extra") or {}).keys())
+        raw_keys |= set((ce.get("raw") or {}).keys())
+    extra_keys = sorted(extra_keys)
+    raw_keys = sorted(raw_keys)
+
+    base_keys = [k for k, _ in EXPORT_COLUMNS]
+    headers = ([label for _, label in EXPORT_COLUMNS] + ["Drug Rows"]
+               + [f"Sum {k}" for k in extra_keys] + list(raw_keys))
+
+    def full_row(l):
+        r = _row(l)
+        ce = l.get("cms_extra") or {}
+        ex = ce.get("extra") or {}
+        rw = ce.get("raw") or {}
+        return ([r.get(k) for k in base_keys] + [ce.get("row_count")]
+                + [ex.get(k) for k in extra_keys] + [rw.get(k) for k in raw_keys])
+
+    rows = [full_row(l) for l in leads]
 
     if fmt == "xlsx":
         from openpyxl import Workbook
@@ -186,7 +206,7 @@ async def export_leads(request: Request, event_id: str | None = None, fmt: str =
         ws.title = "Leads"
         ws.append(headers)
         for r in rows:
-            ws.append([r.get(k) for k in keys])
+            ws.append(r)
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -199,7 +219,7 @@ async def export_leads(request: Request, event_id: str | None = None, fmt: str =
     writer = csv.writer(buf)
     writer.writerow(headers)
     for r in rows:
-        writer.writerow([r.get(k) for k in keys])
+        writer.writerow(r)
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]), media_type="text/csv",
