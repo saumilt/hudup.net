@@ -5,7 +5,7 @@ import { Tablet, LayoutDashboard, Settings2, Activity } from "lucide-react";
 export default function Launcher() {
   const nav = useNavigate();
   const cards = [
-    { to: "/kiosk", icon: Tablet, title: "iPad Kiosk", desc: "Doctor-facing lead capture & prize wheel", tone: "from-emerald-500 to-emerald-700", testid: "launch-kiosk" },
+    { to: "/kiosk", image: "https://images.unsplash.com/photo-1573788583106-acf6c8f3f0b5?crop=entropy&cs=srgb&fm=jpg&q=85&w=800", icon: Tablet, title: "Register & Win", desc: "Doctor-facing lead capture & prize wheel", tone: "from-emerald-500 to-emerald-700", testid: "launch-kiosk" },
     { to: "/dashboard", icon: LayoutDashboard, title: "Staff Dashboard", desc: "Live lead feed, tiers & alerts", tone: "from-blue-500 to-blue-700", testid: "launch-dashboard" },
     { to: "/admin", icon: Settings2, title: "Admin Console", desc: "Data upload, scoring, prizes & SMS rules", tone: "from-slate-700 to-slate-900", testid: "launch-admin" },
   ];
@@ -30,9 +30,15 @@ export default function Launcher() {
               onClick={() => nav(c.to)}
               className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
             >
-              <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${c.tone} p-3 text-white`}>
-                <c.icon className="h-6 w-6" />
-              </div>
+              {c.image ? (
+                <div className="mb-4 h-32 w-full overflow-hidden rounded-xl">
+                  <img src={c.image} alt={c.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                </div>
+              ) : (
+                <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${c.tone} p-3 text-white`}>
+                  <c.icon className="h-6 w-6" />
+                </div>
+              )}
               <h3 className="text-xl font-semibold text-slate-900">{c.title}</h3>
               <p className="mt-1 text-sm text-slate-500">{c.desc}</p>
             </button>
