@@ -1,0 +1,36 @@
+{
+  "summary": "Verified iteration-8 wheel changes end-to-end on web. Backend: 8/8 pytest checks pass in /app/backend/tests/test_iteration8_no_match_red_orange.py — GET /api/kiosk/leads/{id}/glow now returns {glow, glow_340b, glow_rpm}; for a NO-MATCH lead (first='Dhrumil' last='NoMatchZZZ' state='TX' city='Nowhere') glow_340b='#EF4444' RED and glow_rpm='#F59E0B' ORANGE and glow='#EF4444', while the underlying lead still records tier_340b='GREY' and tier_rpm='GREY' (scoring unchanged). Matched NPI 1528194255 returns glow_340b in {#34D399,#10B981,#047857} + glow_rpm='#EF4444' (glow=340B green, higher priority). Matched NPI 1003000126 returns non-grey colors that are NOT the no-match sentinel pair. Admin PUT wheel_tier_glow=false makes the endpoint return {glow:null, glow_340b:null, glow_rpm:null} and toggling back to true restores the real colors. Kiosk privacy contract still exactly {id, spin_available}. One-spin enforcement holds. Frontend /wheel/{id}: for the no-match lead the ring box-shadow is rgb(239,68,68) (outer/340B) + rgb(245,158,11) (inner/RPM) with a red-shaded linear-gradient root background (rgb(100,29,29)->rgb(167,48,48)) and the wheel-glow radial overlay is rendered; for the matched green lead the outer ring is rgb(52,211,153) (#34D399) and inner is rgb(239,68,68) with a green-shaded root background; with wheel_tier_glow disabled the root falls back to the tailwind classes 'from-slate-800 via-slate-800 to-slate-900' (backgroundImage = linear-gradient rgb(30,41,59)->rgb(15,23,42)) with NO inline style and NO wheel-glow overlay — no emerald/green anywhere in the fallback. Version badge reads v1.3 on /wheel, /kiosk, /login, and /admin. Regression: kiosk still returns {id, spin_available}, dashboard feed still returns leads, one-spin still enforced.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_no_match_red_orange.py",
+    "/app/test_reports/pytest/pytest_iter8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_kiosk.py L333-361 lead_glow: response shape correctly expanded to {glow, glow_340b, glow_rpm}. Unmatched branch (tier_340b == 'GREY') hard-codes glow_340b='#EF4444' RED and glow_rpm='#F59E0B' ORANGE per spec — outer=340B/red, inner=RPM/orange; the 'higher' summary picks red. Matched branch uses the stored color_340b/color_rpm from scoring.tier_color_340b + TIER_HEX, so real tiers are unaffected. Admin toggle path returns only {glow: null}; frontend Wheel.js handles missing glow_340b/glow_rpm via `r.data.glow_340b || r.data.glow` — fine because glow is null too, so both state vars end up null and the fallback (slate classes, no overlay) triggers.",
+    "Wheel.js L192-201: fallback root now uses `bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900` when glow340 is falsy — verified via computed backgroundImage rgb(30,41,59) -> rgb(15,23,42). No emerald/green anywhere. Inline `bg` (linear-gradient from tier hex shaded 0.42/0.7) is applied only when glow340 is present.",
+    "Wheel.js L193-195: ringShadow layers RPM color at 0.022 * size then 340B color at 0.05 * size, matching the outer=340B / inner=RPM design. Both no-match and matched leads render correctly.",
+    "version.js APP_VERSION='1.3' propagates to all seven pages that import it — Wheel/Kiosk/Login/Launcher/Admin/Dashboard/LeadDetail/LeadsScreen, verified data-testid='app-version' text is 'v1.3' on /wheel /kiosk /login /admin.",
+    "Kiosk privacy still ONLY {id, spin_available} — no leakage introduced by the glow change."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_no_match_red_orange.py",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (5/5 wheel + version scenarios verified)"},
+  "test_credentials": "Kiosk needs no login; admin used to flip wheel_tier_glow: admin@boothiq.com / PIN 482913.",
+  "seed_data_creation": "Created TEST_-prefixed leads via pytest + several no-match / green / Enkeshafi leads via UI (last names all TEST_*/NoMatchZZZ_*). No bulk-delete endpoint exists; they are trivially filterable by the TEST_/NoMatchZZZ_ prefix.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression: pytest backend/tests/test_iteration8_no_match_red_orange.py -v. An autouse fixture resets wheel_tier_glow=true on module teardown so it's safe to re-run. Anchors: NPI 1528194255 = 340B GREEN + RPM RED, NPI 1003000126 = Enkeshafi (RED). No-match sentinel pair is (340B '#EF4444', RPM '#F59E0B'). Note that /api/dashboard/leads has no DELETE bulk endpoint (returned 405 during cleanup) — future testing agents should not rely on bulk cleanup and should use unique TEST_ prefixes.",
+  "rca of the issue": ""
+}

@@ -347,9 +347,16 @@ async def lead_glow(lead_id: str):
     priority = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3, "GREY": 4}
     p340 = priority.get(lead.get("tier_340b"), 9)
     prpm = priority.get(lead.get("tier_rpm"), 9)
-    color340 = lead.get("color_340b") or "#CBD5E1"
-    color_rpm = lead.get("color_rpm") or "#CBD5E1"
-    higher = color340 if p340 <= prpm else color_rpm
+    unmatched = lead.get("tier_340b") == "GREY"
+    if unmatched:
+        # No match: 340B ring red, RPM ring orange (per staff-hint config).
+        color340 = "#EF4444"
+        color_rpm = "#F59E0B"
+        higher = color340
+    else:
+        color340 = lead.get("color_340b") or "#CBD5E1"
+        color_rpm = lead.get("color_rpm") or "#CBD5E1"
+        higher = color340 if p340 <= prpm else color_rpm
     # outer ring = 340B, inner ring = RPM
     return {"glow": higher, "glow_340b": color340, "glow_rpm": color_rpm}
 

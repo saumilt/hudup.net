@@ -182,7 +182,7 @@ export default function Wheel() {
 
   if (!segments)
     return (
-      <div className="flex h-screen items-center justify-center bg-emerald-700 text-white">
+      <div className="flex h-screen items-center justify-center bg-slate-800 text-white">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
@@ -198,7 +198,7 @@ export default function Wheel() {
     <div
       onClick={restart}
       style={bg ? { background: bg } : undefined}
-      className={`fixed inset-0 flex flex-col items-center justify-center overflow-hidden no-select ${bg ? "" : "bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800"}`}
+      className={`fixed inset-0 flex flex-col items-center justify-center overflow-hidden no-select ${bg ? "" : "bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900"}`}
     >
       <div data-testid="app-version" className="fixed right-3 top-3 z-50 rounded-full bg-black/25 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">v{APP_VERSION}</div>
       {glow && (
