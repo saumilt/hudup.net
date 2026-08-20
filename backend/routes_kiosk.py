@@ -136,13 +136,23 @@ async def _match_physician(data: LeadInput, live: dict):
             collisions = await db.physicians.count_documents(
                 {"session_id": sid, "first_upper": phys["first_upper"], "last_upper": phys["last_upper"]})
             return phys, "confirmed", collisions
-    # Fall back to name resolution.
+    # Fall back to name + location resolution.
     if data.last_name and data.state:
         q = {"session_id": sid, "last_upper": data.last_name.strip().upper(),
              "state": data.state.strip().upper()}
         if data.first_name:
             q["first_initial"] = data.first_name[:1].upper()
-        candidates = await db.physicians.find(q, {"_id": 0}).to_list(50)
+        candidates = await db.physicians.find(q, {"_id": 0}).to_list(200)
+        # Narrow by location (city) when the name is ambiguous — search by name AND location.
+        if len(candidates) > 1 and data.city:
+            city_u = data.city.strip().upper()
+            city_matches = [c for c in candidates if (c.get("city") or "").strip().upper() == city_u]
+            if len(city_matches) == 1:
+                phys = city_matches[0]
+                collisions = await db.physicians.count_documents(
+                    {"session_id": sid, "first_upper": phys["first_upper"], "last_upper": phys["last_upper"]})
+                # Location disambiguated the physician -> treat as confirmed.
+                return phys, "confirmed", collisions
         if len(candidates) == 1:
             phys = candidates[0]
             collisions = await db.physicians.count_documents(

@@ -1,0 +1,35 @@
+{
+  "summary": "Verified the tier-accurate wheel surround end-to-end on web. Backend: 10/10 pytest checks pass in /app/backend/tests/test_iteration7_wheel_glow.py — kiosk POST /api/kiosk/leads returns EXACTLY {id, spin_available} (privacy contract), GET /api/kiosk/leads/{id}/glow returns ONLY {glow} with a hex (no tier word/number/score/dollar leaked); glow returns '#CBD5E1' for an unmatched lead, one of {#34D399,#10B981,#047857} for NPI 1528194255 (GREEN 340B), and '#EF4444' for NPI 1003000126 (Enkeshafi, RED 340B); admin PUT /api/admin/settings {key:'wheel_tier_glow',value:false} makes glow return {glow:null} and toggling back to true restores the color; name+location matching: multi-candidate Adams/GA/M is disambiguated to match_status='confirmed' + real npi + non-GREY tier when the doctor supplies a unique city, and stays unresolved/GREY (glow='#CBD5E1') when the city is omitted; one-spin enforcement holds (2nd spin returns error='already_spun'). Frontend /wheel/{id}: root container's background style is a linear-gradient built from the tier hex (verified inline styles rgb(85,89,95)->rgb(142,149,158) for GREY, rgb(22,89,64)->rgb(36,148,107) for GREEN #34D399, rgb(100,29,29)->rgb(167,48,48) for RED #EF4444 — all matching the shade(hex, 0.42/0.7) math in Wheel.js), and the [data-testid=wheel-glow] radial-gradient overlay is present with the correct rgba tier color. With wheel_tier_glow disabled the root has no inline background and falls back to the default emerald tailwind gradient, and the wheel-glow overlay is not rendered. Screenshots captured for grey/green/red/toggle-off states.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7_wheel_glow.py",
+    "/app/test_reports/pytest/pytest_iter7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_kiosk.py L333-351 lead_glow: correctly returns ONLY {glow: hex|null}, respects admin toggle via get_setting('wheel_tier_glow', True), and picks the higher-priority tier hex using the 340B/RPM priority ladder GREEN<YELLOW<BLUE<RED<GREY. Safe default '#CBD5E1' when tier hex missing.",
+    "routes_kiosk.py L140-160 _match_physician: name+state candidates narrowed by city with a strict single-city-match rule -> 'confirmed'. If city is not supplied or does not uniquely disambiguate, falls back to the original collision-based status. Correctly avoids marking multi-candidate as confirmed.",
+    "routes_kiosk.py L247 privacy contract: still returns ONLY {id, spin_available} — no leakage.",
+    "Wheel.js L185/L193-199: root background gradient uses the shade() helper (0.42 and 0.7 multipliers) which is why the raw hex digits do not appear in the inline style — verified the math for grey/green/red. wheel-glow overlay uses the raw hex with 0x55 alpha suffix which is fine.",
+    "Wheel.js gracefully degrades when glow is null (default emerald gradient class), and does not render the wheel-glow overlay in that case — verified in the toggle-off run."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7_wheel_glow.py"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (4/4 wheel-surround scenarios verified)"},
+  "test_credentials": "Kiosk needs no login; admin used to flip wheel_tier_glow: admin@boothiq.com / PIN 482913.",
+  "seed_data_creation": "Created several TEST_-prefixed leads plus UI-created leads for grey/green/red wheel visual verification. Green anchor NPI 1528194255, red anchor NPI 1003000126 (Enkeshafi). For city disambiguation the test picks whichever Adams/GA/M candidate has a unique city in the current live dataset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression suite: pytest backend/tests/test_iteration7_wheel_glow.py -v. It resets wheel_tier_glow back to true in an autouse fixture, so it's safe to re-run. GREEN anchor: NPI 1528194255. RED anchor: NPI 1003000126. Adams/GA/M reliably returns 8 candidates for city-disambiguation; the test dynamically picks a candidate whose city is unique in the returned list.",
+  "rca of the issue": "The originally reported symptom (unmatched Sam Thakkar showed a green surround) was caused by the wheel page's default fixed emerald tailwind gradient making the subtle grey radial-gradient overlay invisible. Backend scoring was already correct (GREY -> '#CBD5E1'). The fix moves the ambient tier color to the entire root background via inline style derived from GET /api/kiosk/leads/{id}/glow, so grey leads now show a slate-grey surround, red shows red, green shows green. Verified visually and via inline-style inspection."
+}

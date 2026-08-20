@@ -164,6 +164,15 @@ export default function Wheel() {
 
   const restart = () => { if (prize) nav("/kiosk", { replace: true }); };
 
+  // Darken a hex color for background gradients.
+  const shade = (hex, f) => {
+    const h = (hex || "#047857").replace("#", "");
+    const r = Math.round(parseInt(h.slice(0, 2), 16) * f);
+    const g = Math.round(parseInt(h.slice(2, 4), 16) * f);
+    const b = Math.round(parseInt(h.slice(4, 6), 16) * f);
+    return `rgb(${r},${g},${b})`;
+  };
+
   if (!segments)
     return (
       <div className="flex h-screen items-center justify-center bg-emerald-700 text-white">
@@ -171,16 +180,21 @@ export default function Wheel() {
       </div>
     );
 
+  // When the tier glow is on, the WHOLE background reflects the lead's tier color
+  // (grey lead => grey surround, red => red, green => green) so staff read it instantly.
+  const bg = glow ? `linear-gradient(135deg, ${shade(glow, 0.42)}, ${shade(glow, 0.7)})` : undefined;
+
   return (
     <div
       onClick={restart}
-      className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800 no-select"
+      style={bg ? { background: bg } : undefined}
+      className={`fixed inset-0 flex flex-col items-center justify-center overflow-hidden no-select ${bg ? "" : "bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800"}`}
     >
       {glow && (
         <div
           data-testid="wheel-glow"
           className="pointer-events-none absolute inset-0"
-          style={{ background: `radial-gradient(circle at 50% 46%, ${glow}66, ${glow}22 42%, transparent 62%)` }}
+          style={{ background: `radial-gradient(circle at 50% 46%, ${glow}55, transparent 60%)` }}
         />
       )}
       {!prize && (
