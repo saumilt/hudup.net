@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatApiError } from "@/lib/api";
 import { Activity, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { APP_VERSION } from "@/version";
 
 export default function Login() {
   const { login } = useAuth();
@@ -28,6 +29,7 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div data-testid="app-version" className="fixed right-3 top-3 z-50 rounded-full bg-black/30 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">v{APP_VERSION}</div>
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-6 flex items-center gap-2 text-primary">
           <Activity className="h-6 w-6" />

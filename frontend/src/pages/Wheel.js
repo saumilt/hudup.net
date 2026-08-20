@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Loader2 } from "lucide-react";
+import { APP_VERSION } from "@/version";
 
 const FALLBACK_COLORS = ["#059669", "#0EA5E9", "#6366F1", "#F59E0B", "#EF4444", "#8B5CF6"];
 
@@ -190,6 +191,7 @@ export default function Wheel() {
       style={bg ? { background: bg } : undefined}
       className={`fixed inset-0 flex flex-col items-center justify-center overflow-hidden no-select ${bg ? "" : "bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800"}`}
     >
+      <div data-testid="app-version" className="fixed right-3 top-3 z-50 rounded-full bg-black/25 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">v{APP_VERSION}</div>
       {glow && (
         <div
           data-testid="wheel-glow"

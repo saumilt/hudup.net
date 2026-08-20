@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, money } from "@/lib/api";
 import { TIER_STYLES } from "@/components/TierBadge";
 import { ArrowLeft, Download, Filter, Search } from "lucide-react";
+import { APP_VERSION } from "@/version";
 
 const TIERS = ["GREEN", "YELLOW", "BLUE", "RED", "GREY"];
 
@@ -40,7 +41,8 @@ export default function LeadsScreen() {
           <button data-testid="leads-back" onClick={() => nav("/dashboard")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-5 w-5" /></button>
           <h1 className="font-display text-lg font-bold">Filter &amp; Select Leads</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <span data-testid="app-version" className="mr-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">v{APP_VERSION}</span>
           <button data-testid="leads-export-csv" onClick={() => exportFile("csv")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"><Download className="h-3.5 w-3.5" /> CSV</button>
           <button data-testid="leads-export-xlsx" onClick={() => exportFile("xlsx")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600"><Download className="h-3.5 w-3.5" /> XLSX</button>
         </div>

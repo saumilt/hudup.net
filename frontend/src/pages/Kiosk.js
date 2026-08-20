@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { submitLead, syncQueue } from "@/lib/offline";
 import { ChevronRight, ChevronLeft, Search, Activity, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { APP_VERSION } from "@/version";
 
 const INTERESTS = [
   "340B Program",
@@ -113,6 +114,7 @@ export default function Kiosk() {
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden bg-slate-50 no-select">
+      <div data-testid="app-version" className="fixed right-3 top-3 z-50 rounded-full bg-black/25 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">v{APP_VERSION}</div>
       <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primary}0d, #ffffff, ${primary}0d)` }} />
       <div className="relative z-10 flex items-center gap-3 px-8 pt-6">
         <Activity className="h-6 w-6" style={{ color: primary }} />

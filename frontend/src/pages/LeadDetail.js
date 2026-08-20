@@ -4,6 +4,7 @@ import { api, money } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { TIER_STYLES } from "@/components/TierBadge";
 import { ArrowLeft, Loader2, UserPlus, CalendarClock, PhoneCall, Save, StickyNote, Layers } from "lucide-react";
+import { APP_VERSION } from "@/version";
 import { toast } from "sonner";
 
 export default function LeadDetail() {
@@ -40,6 +41,7 @@ export default function LeadDetail() {
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <button data-testid="lead-back" onClick={() => nav("/dashboard")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft className="h-5 w-5" /></button>
         <h1 className="font-display text-lg font-bold">Lead Detail</h1>
+        <span data-testid="app-version" className="ml-auto rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">v{APP_VERSION}</span>
       </header>
 
       <div className="mx-auto max-w-3xl space-y-4 px-5 py-6">

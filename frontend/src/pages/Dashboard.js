@@ -8,6 +8,7 @@ import {
   LogOut, Settings2, RefreshCw, AlertTriangle, CheckCircle2, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { APP_VERSION } from "@/version";
 
 const TIERS = ["GREEN", "YELLOW", "BLUE", "RED", "GREY"];
 
@@ -196,6 +197,7 @@ export default function Dashboard() {
             <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">Live Dashboard</span>
           </div>
           <div className="flex items-center gap-2">
+            <span data-testid="app-version" className="mr-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">v{APP_VERSION}</span>
             <button data-testid="refresh-btn" onClick={load} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><RefreshCw className="h-4 w-4" /></button>
             <button data-testid="alerts-toggle" onClick={() => setShowAlerts(!showAlerts)} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100">
               <Bell className="h-4 w-4" />

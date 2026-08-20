@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { LayoutDashboard, Settings2, Activity, Loader2 } from "lucide-react";
+import { APP_VERSION } from "@/version";
 
 export default function Launcher() {
   const nav = useNavigate();
@@ -19,6 +20,7 @@ export default function Launcher() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <div data-testid="app-version" className="fixed right-3 top-3 z-50 rounded-full bg-black/30 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">v{APP_VERSION}</div>
       <div className="mx-auto max-w-5xl px-6 py-16">
         <div className="mb-2 flex items-center gap-2 text-primary">
           <Activity className="h-6 w-6" />
