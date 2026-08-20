@@ -40,11 +40,11 @@ TIER_HEX = {
 
 
 def green_shade(avg_per_claim: float):
-    """Within 340B GREEN, shade by avg per claim: $4k light -> $7k darker -> $10k+ darkest."""
+    """Within 340B GREEN, shade by avg per claim: $4k light -> $7k dark -> $10k+ darkest."""
     if avg_per_claim >= 10000:
-        return ("GREEN++", "#047857")   # darkest green
+        return ("GREEN++", "#064E3B")   # darkest green
     if avg_per_claim >= 7000:
-        return ("GREEN+", "#10B981")    # darker green
+        return ("GREEN+", "#059669")    # even dark green
     return ("GREEN", "#34D399")         # light green
 
 
@@ -72,8 +72,8 @@ def score_340b(matched: bool, avg_per_claim: float, total_cost: float, t: dict) 
     if avg_per_claim >= t["b340_yellow_apc"] and total_cost > t["b340_yellow_cost"]:
         return "YELLOW"
     if avg_per_claim < t["b340_red_apc"] and total_cost < t["b340_red_cost"]:
-        return "RED"
-    return "BLUE"
+        return "BLUE"
+    return "RED"
 
 
 def score_rpm(matched: bool, total_claims: float, specialty: str) -> str:
