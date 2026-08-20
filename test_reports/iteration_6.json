@@ -1,0 +1,34 @@
+{
+  "summary": "Verified the name-resolution picker end-to-end on /kiosk plus regressions on Step-1 validation and the kiosk lead privacy shape. Backend: 7/7 pytest checks pass (resolve returns candidates for Adams/GA/M and Adams/FL/M with correct card fields, too_many=true for Smith/CA/J with count=36, case-insensitive query, kiosk POST /api/kiosk/leads response contains ONLY {id, spin_available} with no score/tier/dollar/medicare leak, end-to-end lead created via picker-selected NPI is match_status=confirmed with tiers computed and not GREY, one-spin enforcement enforced). Frontend: Step-1 Continue enables correctly across all 6 combinations (both/phone-only/email-only/neither/missing-first/missing-last); Step-2 picker (data-testid resolve-picker) appears after state=GA is selected with 8 candidate cards including resolve-1932157880 (Dr. Michael Adams · Savannah · General Surgery); switching state to FL re-queries and returns a different 7-card set; picking common name Smith/CA/J shows the too_many hint 'Add your NPI on the first screen for the fastest, most accurate match'; clicking Michael Adams card auto-fills city='Savannah' and specialty='General Surgery'; completing steps 2-3 and submitting navigates to /wheel/:id (verified 669fc592-a9a0-4fc1-b690-3bb77e38ea14) and GET /api/dashboard/leads/{id} returns match_status=confirmed, npi=1932157880, tier_340b=RED, tier_rpm=YELLOW.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_resolve.py",
+    "/app/test_reports/pytest/pytest_iter6.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Kiosk.js L58-64 resolveMatches() correctly clears candidates/tooMany when last_name or state is empty and short-circuits when an NPI is already entered — no stale picker state.",
+    "Kiosk.js L73 useEffect re-runs resolveMatches on step, state, last_name, first_name changes — good coverage for re-query on state change (verified GA→FL produced a different candidate set).",
+    "routes_kiosk.py L79-102: /api/kiosk/resolve does session_id + last_upper + state + first_initial match, returns count and a hard 12-cap into too_many — matches the picker contract exactly.",
+    "routes_kiosk.py L237 correctly returns ONLY {id, spin_available} — no score/tier/medicare leak (privacy contract verified).",
+    "Kiosk.js L74-78 selectCandidate only fills city/specialty if empty — safe against overwriting typed values."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_resolve.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "test_credentials": "Kiosk needs no login. Admin used to verify created lead: admin@boothiq.com / PIN 482913.",
+  "seed_data_creation": "Created TEST_-prefixed leads in the shared live dataset during pytest, plus one UI-submitted lead id=669fc592-a9a0-4fc1-b690-3bb77e38ea14 for Michael Adams (NPI 1932157880, Savannah, General Surgery).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression suite for the resolve picker + kiosk privacy lives at /app/backend/tests/test_iteration6_resolve.py; run with `pytest backend/tests/test_iteration6_resolve.py -v`. Adams/GA/M and Adams/FL/M are the reliable seed cases for candidate lists; Smith/CA/J and Patel/CA/A reliably trigger too_many (count 36 and 81 respectively). Michael Adams NPI 1932157880 is the anchor for confirmed-match end-to-end submits."
+}

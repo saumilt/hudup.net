@@ -55,8 +55,30 @@ export default function Kiosk() {
   const toggleInterest = (i) =>
     setForm((f) => ({ ...f, interests: f.interests.includes(i) ? f.interests.filter((x) => x !== i) : [...f.interests, i] }));
 
+  // Name-resolution picker: query the database by last name + state + first initial
+  // so common names (PATEL, LEE...) resolve to the right physician.
+  const [candidates, setCandidates] = useState([]);
+  const [tooMany, setTooMany] = useState(false);
+  const resolveMatches = async () => {
+    if (form.npi.trim()) return;
+    if (!form.last_name.trim() || !form.state) { setCandidates([]); setTooMany(false); return; }
+    try {
+      const { data } = await api.post("/kiosk/resolve", {
+        last_name: form.last_name, state: form.state, first_initial: form.first_name.slice(0, 1),
+      });
+      setCandidates(data.candidates || []);
+      setTooMany(!!data.too_many);
+    } catch { setCandidates([]); setTooMany(false); }
+  };
+  useEffect(() => { if (step === 2) resolveMatches(); }, [step, form.state, form.last_name, form.first_name]);
+  const selectCandidate = (c) => {
+    set("npi", c.npi);
+    if (!form.city) set("city", c.city);
+    if (!form.specialty) set("specialty", c.specialty);
+  };
+
   const step1Valid = form.first_name.trim() && form.last_name.trim() &&
-    ((form.phone.trim() && !form.email.trim()) || (!form.phone.trim() && form.email.trim()));
+    (form.phone.trim() || form.email.trim());
 
   const submit = async () => {
     setSubmitting(true);
@@ -134,11 +156,30 @@ export default function Kiosk() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <input data-testid="kiosk-city" className={inputCls} placeholder="City" value={form.city} onChange={(e) => set("city", e.target.value)} />
-              <select data-testid="kiosk-state" className={inputCls} value={form.state} onChange={(e) => set("state", e.target.value)}>
+              <input data-testid="kiosk-city" className={inputCls} placeholder="Practice city" value={form.city} onChange={(e) => set("city", e.target.value)} />
+              <select data-testid="kiosk-state" className={inputCls} value={form.state} onChange={(e) => { set("state", e.target.value); }}>
                 {config.states.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+            {!form.npi && (candidates.length > 0 || tooMany) && (
+              <div data-testid="resolve-picker" className="rounded-2xl border-2 border-slate-200 bg-white p-4">
+                <p className="mb-2 text-sm font-semibold text-slate-600">Is one of these your practice? <span className="font-normal text-slate-400">(optional — helps us find you)</span></p>
+                {tooMany ? (
+                  <p className="text-sm text-slate-400">Lots of matches for that name in {form.state}. Add your NPI on the first screen for the fastest, most accurate match.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {candidates.map((c) => (
+                      <button key={c.npi} data-testid={`resolve-${c.npi}`} onClick={() => selectCandidate(c)}
+                        style={form.npi === c.npi ? { borderColor: primary, backgroundColor: `${primary}12` } : {}}
+                        className="rounded-xl border-2 border-slate-200 px-4 py-3 text-left transition active:scale-[0.99]">
+                        <span className="font-semibold text-slate-800">Dr. {c.first_name} {c.last_name}</span>
+                        <span className="block text-sm text-slate-500">{c.city} · {c.specialty}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
               <input data-testid="kiosk-specialty-search" className={`${inputCls} pl-12`} placeholder="Search specialty" value={form.specialty || specSearch} onChange={(e) => { setSpecSearch(e.target.value); set("specialty", ""); }} />

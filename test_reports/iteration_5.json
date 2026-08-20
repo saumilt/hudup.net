@@ -1,0 +1,27 @@
+{
+  "summary": "Verified the kiosk Step 1 validation fix on /kiosk. Continue button (data-testid kiosk-next) now correctly enables when first_name + last_name + AT LEAST ONE of phone/email is filled (including the previously-broken case where BOTH phone and email are filled). Full end-to-end kiosk flow submits successfully with BOTH phone (9519565431) and email filled: POST /api/kiosk/leads -> 200 {id, spin_available: true}, navigates to /wheel/:id, glow endpoint returns a color, and wheel spin (one-spin) works.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "step1Valid logic in /app/frontend/src/pages/Kiosk.js L58-59 is now correct: first_name && last_name && (phone || email). Fix is minimal and safe.",
+    "Minor UX: labels between phone and email still read 'OR' (uppercase via CSS) which is accurate since either or both are accepted; consider changing helper text to 'phone and/or email' if you want to signal that both are allowed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "test_credentials": "Kiosk requires no login. Used phone=9519565431, email=test@example.com.",
+  "seed_data_creation": "Created one lead id=f039724f-b9cf-4cc6-895e-c33a4a8ef840 in preview environment during e2e test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Kiosk step1Valid validation fix verified across 6 combinations (both/only-phone/only-email/neither/missing-first/missing-last). Full submit + wheel spin + glow endpoint all pass. Bug is fixed; user should redeploy preview -> production (hudlup.net) to close the reported issue.",
+  "rca of the issue": "Original bug: step1Valid used XOR logic ((phone && !email) || (!phone && email)) which disabled Continue when BOTH phone and email were filled. Fix: changed to inclusive OR: first_name && last_name && (phone || email). Verified in /app/frontend/src/pages/Kiosk.js L58-59. All 6 validation combinations behave as expected and the full submit -> wheel -> spin -> glow flow works end-to-end against the shared FastAPI backend."
+}
