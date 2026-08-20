@@ -347,8 +347,11 @@ async def lead_glow(lead_id: str):
     priority = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3, "GREY": 4}
     p340 = priority.get(lead.get("tier_340b"), 9)
     prpm = priority.get(lead.get("tier_rpm"), 9)
-    color = lead.get("color_340b") if p340 <= prpm else lead.get("color_rpm")
-    return {"glow": color or "#CBD5E1"}
+    color340 = lead.get("color_340b") or "#CBD5E1"
+    color_rpm = lead.get("color_rpm") or "#CBD5E1"
+    higher = color340 if p340 <= prpm else color_rpm
+    # outer ring = 340B, inner ring = RPM
+    return {"glow": higher, "glow_340b": color340, "glow_rpm": color_rpm}
 
 
 @router.post("/leads/{lead_id}/spin")

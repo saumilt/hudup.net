@@ -18,6 +18,8 @@ export default function Wheel() {
   const [prize, setPrize] = useState(null);
   const [size, setSize] = useState(Math.min(window.innerWidth, window.innerHeight));
   const [glow, setGlow] = useState(null);
+  const [glow340, setGlow340] = useState(null);
+  const [glowRpm, setGlowRpm] = useState(null);
 
   useEffect(() => {
     api.get("/kiosk/config").then((r) => {
@@ -28,8 +30,12 @@ export default function Wheel() {
     }).catch(() => {
       setSegments(FALLBACK_COLORS.map((c, i) => ({ id: `f${i}`, label: `Prize ${i + 1}`, color: c })));
     });
-    // Staff hint: ambient color surround based on the doctor's tier (color only).
-    api.get(`/kiosk/leads/${leadId}/glow`).then((r) => setGlow(r.data.glow)).catch(() => {});
+    // Staff hint: outer ring = 340B tier color, inner ring = RPM tier color.
+    api.get(`/kiosk/leads/${leadId}/glow`).then((r) => {
+      setGlow(r.data.glow);
+      setGlow340(r.data.glow_340b || r.data.glow);
+      setGlowRpm(r.data.glow_rpm || r.data.glow);
+    }).catch(() => {});
     const onResize = () => setSize(Math.min(window.innerWidth, window.innerHeight));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -181,9 +187,12 @@ export default function Wheel() {
       </div>
     );
 
-  // When the tier glow is on, the WHOLE background reflects the lead's tier color
-  // (grey lead => grey surround, red => red, green => green) so staff read it instantly.
-  const bg = glow ? `linear-gradient(135deg, ${shade(glow, 0.42)}, ${shade(glow, 0.7)})` : undefined;
+  // Background ambiance follows 340B; the wheel gets two concentric rings —
+  // outer = 340B color, inner = RPM color — so staff read both scores at a glance.
+  const bg = glow340 ? `linear-gradient(135deg, ${shade(glow340, 0.42)}, ${shade(glow340, 0.7)})` : undefined;
+  const ringShadow = (glow340 && glowRpm)
+    ? `0 0 0 ${Math.round(size * 0.022)}px ${glowRpm}, 0 0 0 ${Math.round(size * 0.05)}px ${glow340}, 0 0 60px 18px ${glow340}`
+    : undefined;
 
   return (
     <div
@@ -204,7 +213,7 @@ export default function Wheel() {
           <h1 className="mb-4 font-display text-3xl font-extrabold text-white drop-shadow sm:text-4xl">
             {spinning ? "Good luck! 🍀" : "Tap SPIN to win!"}
           </h1>
-          <div className="relative" style={{ width: size * 0.92, height: size * 0.92, borderRadius: "50%", boxShadow: glow ? `0 0 80px 24px ${glow}` : undefined }}>
+          <div className="relative" style={{ width: size * 0.92, height: size * 0.92, borderRadius: "50%", boxShadow: ringShadow }}>
             {/* pointer */}
             <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: "18px solid transparent", borderRight: "18px solid transparent", borderTop: "34px solid #fbbf24" }} />
             <canvas ref={canvasRef} width={size} height={size} className="mx-auto block drop-shadow-2xl" style={{ width: size * 0.92, height: size * 0.92 }} />
