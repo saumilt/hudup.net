@@ -176,8 +176,14 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
-  const failedAlerts = alerts.filter((a) => a.status === "failed" || a.status === "undelivered");
+  const failedAlerts = alerts.filter((a) => ["failed", "undelivered", "unknown", "undelivered "].includes(a.status) || (a.error && a.status !== "digest" && a.status !== "sent" && a.status !== "delivered"));
   const delayedAlerts = alerts.filter((a) => a.delayed);
+  const topError = (() => {
+    const counts = {};
+    failedAlerts.forEach((a) => { if (a.error) counts[a.error] = (counts[a.error] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((x, y) => y[1] - x[1]);
+    return sorted.length ? sorted[0][0] : null;
+  })();
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -210,6 +216,12 @@ export default function Dashboard() {
         {online && delayedAlerts.length > 0 && (
           <div className="flex items-center gap-2 bg-amber-500 px-5 py-2 text-sm font-semibold text-white">
             <AlertTriangle className="h-4 w-4" /> {delayedAlerts.length} alert(s) were delayed due to a connectivity gap.
+          </div>
+        )}
+        {failedAlerts.length > 0 && (
+          <div data-testid="sms-health-banner" className="flex items-center gap-2 bg-red-600 px-5 py-2 text-sm font-semibold text-white">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            SMS delivery problem — {failedAlerts.length} alert(s) not delivered{topError ? ` (${topError})` : ""}. Check roster numbers and Twilio A2P 10DLC registration.
           </div>
         )}
       </header>
