@@ -7,15 +7,23 @@ export default function PrizesPanel() {
   const [sets, setSets] = useState([]);
   const [active, setActive] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [tierGlow, setTierGlow] = useState(true);
 
   const load = async () => {
-    const [s, a] = await Promise.all([api.get("/admin/prizes"), api.get("/admin/prizes/analytics")]);
+    const [s, a, st] = await Promise.all([api.get("/admin/prizes"), api.get("/admin/prizes/analytics"), api.get("/admin/settings")]);
     setSets(s.data);
     setAnalytics(a.data);
+    setTierGlow(st.data.wheel_tier_glow !== false);
     const act = s.data.find((x) => x.active) || s.data[0];
     setActive(act ? JSON.parse(JSON.stringify(act)) : null);
   };
   useEffect(() => { load(); }, []);
+
+  const toggleGlow = async (v) => {
+    setTierGlow(v);
+    await api.put("/admin/settings", { key: "wheel_tier_glow", value: v });
+    toast.success(v ? "Tier-color glow ON (staff hint)" : "Tier-color glow OFF");
+  };
 
   const updateSeg = (i, k, v) => {
     const segs = [...active.segments];
@@ -76,6 +84,14 @@ export default function PrizesPanel() {
       </div>
 
       <div>
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-5">
+          <h3 className="mb-1 font-display font-bold">Staff Hint: Tier Glow</h3>
+          <p className="mb-3 text-xs text-slate-500">Surrounds the wheel with the doctor&apos;s tier color (color only — no score/numbers) so the booth employee reads potential at a glance. A workaround until SMS delivery is live.</p>
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+            <input data-testid="toggle-tier-glow" type="checkbox" checked={tierGlow} onChange={(e) => toggleGlow(e.target.checked)} />
+            {tierGlow ? <span className="text-emerald-600">Enabled</span> : <span className="text-slate-400">Disabled</span>}
+          </label>
+        </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h3 className="mb-3 flex items-center gap-2 font-display font-bold"><BarChart3 className="h-5 w-5 text-primary" /> Wheel Analytics</h3>
           {analytics && (

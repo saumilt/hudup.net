@@ -16,6 +16,7 @@ export default function Wheel() {
   const [spinning, setSpinning] = useState(false);
   const [prize, setPrize] = useState(null);
   const [size, setSize] = useState(Math.min(window.innerWidth, window.innerHeight));
+  const [glow, setGlow] = useState(null);
 
   useEffect(() => {
     api.get("/kiosk/config").then((r) => {
@@ -26,10 +27,12 @@ export default function Wheel() {
     }).catch(() => {
       setSegments(FALLBACK_COLORS.map((c, i) => ({ id: `f${i}`, label: `Prize ${i + 1}`, color: c })));
     });
+    // Staff hint: ambient color surround based on the doctor's tier (color only).
+    api.get(`/kiosk/leads/${leadId}/glow`).then((r) => setGlow(r.data.glow)).catch(() => {});
     const onResize = () => setSize(Math.min(window.innerWidth, window.innerHeight));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [leadId]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -173,12 +176,19 @@ export default function Wheel() {
       onClick={restart}
       className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800 no-select"
     >
+      {glow && (
+        <div
+          data-testid="wheel-glow"
+          className="pointer-events-none absolute inset-0"
+          style={{ background: `radial-gradient(circle at 50% 46%, ${glow}66, ${glow}22 42%, transparent 62%)` }}
+        />
+      )}
       {!prize && (
         <>
           <h1 className="mb-4 font-display text-3xl font-extrabold text-white drop-shadow sm:text-4xl">
             {spinning ? "Good luck! 🍀" : "Tap SPIN to win!"}
           </h1>
-          <div className="relative" style={{ width: size * 0.92, height: size * 0.92 }}>
+          <div className="relative" style={{ width: size * 0.92, height: size * 0.92, borderRadius: "50%", boxShadow: glow ? `0 0 80px 24px ${glow}` : undefined }}>
             {/* pointer */}
             <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: "18px solid transparent", borderRight: "18px solid transparent", borderTop: "34px solid #fbbf24" }} />
             <canvas ref={canvasRef} width={size} height={size} className="mx-auto block drop-shadow-2xl" style={{ width: size * 0.92, height: size * 0.92 }} />

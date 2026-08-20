@@ -520,6 +520,7 @@ async def get_settings(admin=Depends(require_admin)):
     return {
         "convention_state": await get_setting("convention_state", "TX"),
         "wheel_mute": await get_setting("wheel_mute", False),
+        "wheel_tier_glow": await get_setting("wheel_tier_glow", True),
     }
 
 

@@ -320,6 +320,27 @@ async def _dispatch_alerts(lead: dict, delayed: bool):
         await ws_manager.broadcast("dashboard", {"type": "alert", "log": {k: v for k, v in log.items()}})
 
 
+@router.get("/leads/{lead_id}/glow")
+async def lead_glow(lead_id: str):
+    """Staff hack: return ONLY an ambient color hex for the wheel surround (no tier
+    word, no numbers) so the booth employee can read the doctor's potential at a
+    glance. Gated by the admin 'wheel_tier_glow' toggle; off => no color leaks."""
+    enabled = await get_setting("wheel_tier_glow", True)
+    if not enabled:
+        return {"glow": None}
+    lead = await db.leads.find_one(
+        {"id": lead_id},
+        {"_id": 0, "tier_340b": 1, "tier_rpm": 1, "color_340b": 1, "color_rpm": 1},
+    )
+    if not lead:
+        return {"glow": None}
+    priority = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3, "GREY": 4}
+    p340 = priority.get(lead.get("tier_340b"), 9)
+    prpm = priority.get(lead.get("tier_rpm"), 9)
+    color = lead.get("color_340b") if p340 <= prpm else lead.get("color_rpm")
+    return {"glow": color or "#CBD5E1"}
+
+
 @router.post("/leads/{lead_id}/spin")
 async def spin_wheel(lead_id: str):
     # Atomic guard: one spin per lead, enforced server-side.
