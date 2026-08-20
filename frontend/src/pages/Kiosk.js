@@ -27,7 +27,7 @@ export default function Kiosk() {
   const eventId = localStorage.getItem("boothiq_event_id") || "default";
   const [form, setForm] = useState({
     first_name: "", last_name: "", phone: "", email: "", npi: "",
-    practice: "", city: "", state: "", specialty: "", associate_id: "", associate_name: "",
+    practice: "", practice_type: "", city: "", state: "", specialty: "", associate_id: "", associate_name: "",
     interests: [], contact_consent: false, sms_consent: false,
   });
 
@@ -122,6 +122,17 @@ export default function Kiosk() {
           <div className="space-y-4">
             <h1 className="font-display text-4xl font-bold text-slate-900">Your practice</h1>
             <input data-testid="kiosk-practice" className={inputCls} placeholder="Practice name" value={form.practice} onChange={(e) => set("practice", e.target.value)} />
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-500">Practice type</label>
+              <div className="flex flex-wrap gap-2">
+                {["Employee", "Private Practice", "Group"].map((pt) => (
+                  <button key={pt} data-testid={`kiosk-ptype-${pt}`} onClick={() => set("practice_type", pt)}
+                    style={chip(form.practice_type === pt)} className="rounded-full border-2 border-slate-200 bg-white px-5 py-2.5 text-base font-medium text-slate-700 transition active:scale-95">
+                    {pt}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <input data-testid="kiosk-city" className={inputCls} placeholder="City" value={form.city} onChange={(e) => set("city", e.target.value)} />
               <select data-testid="kiosk-state" className={inputCls} value={form.state} onChange={(e) => set("state", e.target.value)}>
@@ -142,10 +153,10 @@ export default function Kiosk() {
             </div>
             {config.associates?.length > 0 && (
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-500">Who helped you today?</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-500">Which employee helped you today?</label>
                 <select data-testid="kiosk-associate" className={inputCls} value={form.associate_id}
                   onChange={(e) => { const a = config.associates.find((x) => x.id === e.target.value); set("associate_id", e.target.value); set("associate_name", a ? a.name : ""); }}>
-                  <option value="">Select associate</option>
+                  <option value="">Select employee</option>
                   {config.associates.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>

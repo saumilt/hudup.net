@@ -67,6 +67,7 @@ export default function LeadDetail() {
             <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-slate-600">
               <p><span className="text-slate-400">NPI:</span> {lead.npi || "—"}</p>
               <p><span className="text-slate-400">Practice:</span> {lead.practice || "—"}</p>
+              <p><span className="text-slate-400">Practice type:</span> {lead.practice_type || "—"}</p>
               <p><span className="text-slate-400">Phone:</span> {lead.phone || "—"}</p>
               <p><span className="text-slate-400">Email:</span> {lead.email || "—"}</p>
               <p><span className="text-slate-400">Associate:</span> {lead.associate_name || "—"}</p>

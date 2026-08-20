@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 4 verifies the bug fixes and new features shipped this turn: (1) EMPLOYEE DROPDOWN FALLBACK — GET /api/kiosk/config?event_id=default returns associates from the full staff_roster when the default event has empty associate_ids (verified backend + UI; 4 real roster members surface in the dropdown). (2) PRACTICE TYPE — POST /api/kiosk/leads accepts practice_type ('Employee'/'Private Practice'/'Group'), persists to lead.practice_type, is returned by GET /api/dashboard/leads/{id}, is exported in the CSV header ('Practice Type'), and renders on the kiosk step-2 UI as chips (data-testid kiosk-ptype-Employee etc.) and on LeadDetail as 'Practice type: Private Practice'. Kiosk response STILL returns only {id, spin_available} — no score/medicare leak. (3) SELECTED-EMPLOYEE ALWAYS-ALERT (KEY) — a GREY unmatched lead captured with associate_id=<Sam Thakkar's id> produces exactly one alert_log for that staffer with body containing 'Open: <APP_URL>/lead/{id}'. Dedup verified: capturing again for a tier-eligible on-duty associate still yields <=1 log per (lead, staff). (4) TWILIO STATUS WEBHOOK — verified end-to-end with REAL Twilio callback: our kiosk-driven capture produced a message with sid=SM1508fac0df… whose alert_log row transitioned from queued -> undelivered with error='Twilio error 30034' (real 10DLC registration failure). POST /api/twilio/status also accepts a manual form-post and updates the matching row. (5) REGRESSION — admin+staff login, one-spin-per-lead, kiosk 3-step flow, LeadDetail rendering, and CSV export all pass. Backend: 8/8 iter4 pytest cases pass in 12.96s; prior iter1/2/3 tests remain available.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Dashboard filter selects", "issues": ["Same cosmetic dev-overlay hydration warning '<span> cannot be a child of <option>' as iterations 1/2/3 — comes from Emergent's dev x-file-name overlay, not app source. No user-visible impact."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4_features.py",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [
+    "OBSERVATION (not blocking): The alert_log body's 'Open: <url>' link uses a DIFFERENT preview domain (947a83bf-cfd3-46a2-8eca-86106c3dcd44.preview.emergentagent.com) than the current REACT_APP_BACKEND_URL / APP_URL in .env (prize-wheel-hub-4.preview.emergentagent.com). The path /lead/{id} is correct and the URL is publicly reachable via ingress, so texts work, but the two hosts should be reconciled — either the backend/.env APP_URL was hot-swapped between deploys, or send_sms is reading a stale value. Verify APP_URL is the same env the frontend uses so texts don't confuse recipients or fail auth cookies on click-through.",
+    "OBSERVATION (carried from iter3): xlsx export currently buffers the workbook in-memory; consider streaming/write-only for very large lead tables."
+  ],
+  "critical_code_review_comments": [
+    "routes_kiosk.kiosk_config correctly falls back to full staff_roster only when event.associate_ids is empty/missing — this is exactly the requested behavior and won't accidentally override an intentionally-empty ['associate_ids'] whitelist because the code path checks truthiness of the array (empty list falls through to fallback). Acceptable trade-off — an event with zero assigned associates gets the full roster, which is the whole point of the fix.",
+    "routes_kiosk._dispatch_alerts correctly deduplicates via `if existing: continue` on {lead_id, staff_id} and additionally uses `targets.setdefault` so a staffer who is BOTH tier-eligible and the selected associate gets exactly one entry. Verified in TestSelectedEmployeeAlert.test_dedup_single_alert_per_staff_per_lead.",
+    "routes_kiosk._dispatch_alerts falls back to ('340B', tier_340b, 'GREY') when no tier rule triggered — this preserves the color/shade in the SMS body even for GREY leads. Good.",
+    "server.twilio_status uses FastAPI Form(None) — correctly accepts application/x-www-form-urlencoded which is how Twilio posts. It updates by sid and no-ops silently if sid isn't found; consider logging a warning for unknown sids so future 30034/undelivered-from-outside-our-app debugging is easier.",
+    "deps._e164 correctly normalizes 10-digit US numbers to +1XXXXXXXXXX and preserves already-E164 inputs. Edge: numbers with non-US 11+ digits without + get a bare '+' prefix — could yield an invalid E164 for some international carriers, but not in scope for a US-only trade-show tool.",
+    "routes_kiosk.create_lead's kiosk response strictly returns {id, spin_available} — no score/tier/dollar/medicare leak. Verified.",
+    "routes_dashboard.EXPORT_COLUMNS includes ('practice_type', 'Practice Type'). Verified via CSV header parse."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4_features.py (new — 8 tests covering all iter4 features + regression)"
+  ],
+  "success_rate": {"backend": "100% (8/8 iter4 tests)", "frontend": "100% of new UI (kiosk practice-type chips, associate dropdown fallback, LeadDetail practice_type + associate)"},
+  "test_credentials": "admin@boothiq.com / 482913, staff@boothiq.com / 715264 (both verified)",
+  "seed_data_creation": "Reused existing preview DB (Gujarat Physician default event, roster with 4 members: Sam Thakkar and 3 others). Kiosk UI test created lead id 6d02fc9a-be32-468c-83fa-1d13f3abca46 (TestUI Iter4, GREY unmatched, associate=Sam Thakkar) which drove the always-alert + link verification. Backend tests created a handful of TEST_Iter4-prefixed leads via /api/kiosk/leads.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Four backend test files live under /app/backend/tests/: test_boothiq_api.py (iter1, 34 tests), test_bug_and_features.py (iter2, 16 tests), test_capture_all_columns.py (iter3, 11 tests), test_iteration4_features.py (iter4, 8 tests). All pass. The webhook test auto-skips assertion when Twilio doesn't return a sid (unregistered sender case) but this iteration's live capture DID produce a real sid and the webhook DID transition status queued->undelivered with error 30034 — so the pipeline is proven end-to-end even against a broken 10DLC registration. Real Twilio delivery is still blocked by 30034 and that is an account-registration issue only, not code.",
+  "rca of the issue": "User's 'no employee dropdown' bug root-caused to: the default event 'Gujarat Physician' has associate_ids=[] so the kiosk_config route returned associates=[] and the UI conditionally hid the '<select data-testid=kiosk-associate>' (guarded by `config.associates?.length > 0`). Fix in routes_kiosk.kiosk_config lines 59-63 now returns the full staff_roster when event.associate_ids is empty. Verified: with 4 roster members and default event unchanged, the dropdown now renders and populates correctly."
+}

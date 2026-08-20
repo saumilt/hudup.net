@@ -53,11 +53,14 @@ async def kiosk_config(event_id: str = "default"):
             inv = s.get("inventory")
             if inv is None or inv > 0:
                 segments.append({"id": s["id"], "label": s["label"], "color": s["color"]})
-    # Associates working this event (name only — used for the kiosk dropdown).
+    # Associates for the "who helped you" picker. Prefer this event's assigned
+    # associates; if none are assigned, fall back to the full staff roster so the
+    # dropdown always appears.
     associates = []
     if event.get("associate_ids"):
-        roster = await db.staff_roster.find({"id": {"$in": event["associate_ids"]}}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
-        associates = roster
+        associates = await db.staff_roster.find({"id": {"$in": event["associate_ids"]}}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
+    if not associates:
+        associates = await db.staff_roster.find({}, {"_id": 0, "id": 1, "name": 1, "role": 1}).to_list(200)
     convention_state = event.get("convention_state") or await get_setting("convention_state", "TX")
     return {
         "event_id": event.get("id", "default"),
@@ -106,6 +109,7 @@ class LeadInput(BaseModel):
     email: str | None = None
     npi: str | None = None
     practice: str | None = None
+    practice_type: str | None = None  # Employee | Private Practice | Group
     city: str | None = None
     state: str | None = None
     specialty: str | None = None
@@ -198,7 +202,8 @@ async def create_lead(data: LeadInput):
         "id": lead_id,
         "first_name": data.first_name, "last_name": data.last_name,
         "phone": data.phone, "email": data.email, "npi": npi,
-        "practice": data.practice, "city": data.city or (phys.get("city") if phys else None),
+        "practice": data.practice, "practice_type": data.practice_type,
+        "city": data.city or (phys.get("city") if phys else None),
         "state": data.state or (phys.get("state") if phys else None),
         "specialty": specialty or (phys.get("specialty") if phys else None),
         "interests": data.interests,
@@ -243,67 +248,76 @@ def _fmt_money(v):
 
 
 async def _dispatch_alerts(lead: dict, delayed: bool):
-    rules_doc = await db.alert_rules.find_one({"event_id": lead.get("event_id", "default")})
-    if not rules_doc:
-        return
+    rules_doc = await db.alert_rules.find_one({"event_id": lead.get("event_id", "default")}) or {}
     rules = rules_doc.get("rules", {})
     ceiling = rules_doc.get("ceiling_per_hour", 20)
     app_url = os.environ.get("APP_URL", "")
+    event = await db.events.find_one({"id": lead.get("event_id", "default")}, {"_id": 0}) or {}
+    event_associates = event.get("associate_ids") or None
 
-    triggered = []  # (score_type_label, tier, recipients)
+    priority = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3, "GREY": 4}
+    triggered = []  # (label, tier, recipients)
     for score_key, label in (("340b", "340B"), ("rpm", "RPM")):
         tier = lead["tier_340b"] if score_key == "340b" else lead["tier_rpm"]
         rule = rules.get(score_key, {}).get(tier)
         if rule and rule.get("send"):
             triggered.append((label, tier, rule.get("recipients", "all")))
-    if not triggered:
-        return
-    # Highest priority first so a staffer's single (deduped) text is the best one.
-    priority = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3, "GREY": 4}
     triggered.sort(key=lambda x: priority.get(x[1], 9))
 
-    med = lead.get("medicare", {})
-    # Alerts go to on-duty staff; if the event has assigned associates, scope to them.
-    event = await db.events.find_one({"id": lead.get("event_id", "default")}, {"_id": 0}) or {}
-    event_associates = event.get("associate_ids") or None
+    # Build target staff -> headline (label, tier). One text per staffer (deduped).
+    targets = {}
     for label, tier, recipients in triggered:
         roster = await db.staff_roster.find({"on_duty": True}, {"_id": 0}).to_list(200)
         if event_associates:
             roster = [r for r in roster if r["id"] in event_associates]
         if recipients != "all" and isinstance(recipients, list):
             roster = [r for r in roster if r["id"] in recipients]
-        name = f"Dr. {lead['first_name']} {lead['last_name']}"
-        loc = f"{lead.get('city') or ''} {lead.get('state') or ''}".strip()
-        figures = f"{int(med.get('tot_clms') or 0):,} claims, {_fmt_money(med.get('tot_cost'))}, ${int(med.get('avg_per_claim') or 0):,}/claim"
-        # Color code carried into the text (green-shaded for 340B).
+        for st in roster:
+            targets.setdefault(st["id"], (st, label, tier))
+
+    # ALWAYS notify the employee the doctor selected, regardless of tier, so they
+    # get the lead + link to add notes.
+    if lead.get("associate_id"):
+        assoc = await db.staff_roster.find_one({"id": lead["associate_id"]}, {"_id": 0})
+        if assoc and assoc["id"] not in targets:
+            hl = (triggered[0][0], triggered[0][1]) if triggered else ("340B", lead.get("tier_340b", "GREY"))
+            targets[assoc["id"]] = (assoc, hl[0], hl[1])
+
+    if not targets:
+        return
+
+    med = lead.get("medicare", {})
+    name = f"Dr. {lead['first_name']} {lead['last_name']}"
+    loc = f"{lead.get('city') or ''} {lead.get('state') or ''}".strip()
+    for _, (staff, label, tier) in targets.items():
+        existing = await db.alert_logs.find_one({"lead_id": lead["id"], "staff_id": staff["id"]})
+        if existing:
+            continue
         color = lead.get("color_340b") if label == "340B" else lead.get("color_rpm")
         shade = lead.get("shade_340b") if label == "340B" else tier
+        if med.get("tot_clms") is not None:
+            figures = f"{int(med.get('tot_clms') or 0):,} claims, {_fmt_money(med.get('tot_cost'))}, ${int(med.get('avg_per_claim') or 0):,}/claim"
+        else:
+            figures = "unmatched lead"
         link = f"{app_url}/lead/{lead['id']}" if app_url else ""
         body = f"[{color}] {shade} {label} — {name}, {lead.get('specialty') or 'Unknown'}, {loc}. {figures}. {lead.get('booth', '')}. Open: {link}".strip()
-
-        for staff in roster:
-            # Dedup: never send twice for the same lead to the same staffer.
-            existing = await db.alert_logs.find_one({"lead_id": lead["id"], "staff_id": staff["id"]})
-            if existing:
-                continue
-            # Rate limit per staffer per hour.
-            since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-            recent = await db.alert_logs.count_documents(
-                {"staff_id": staff["id"], "status": "sent", "created_at": {"$gte": since}})
-            log = {
-                "id": str(uuid.uuid4()), "lead_id": lead["id"], "staff_id": staff["id"],
-                "staff_name": staff["name"], "to": staff["mobile"],
-                "score_type": label, "tier": tier, "body": body,
-                "delayed": delayed, "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            if recent >= ceiling:
-                log.update({"status": "digest", "sid": None, "error": "Hourly ceiling reached — digest fallback"})
-                await db.alert_logs.insert_one(dict(log))
-                continue
-            result = await asyncio.to_thread(send_sms, staff["mobile"], body)
-            log.update({"status": result["status"], "sid": result["sid"], "error": result["error"]})
+        since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        recent = await db.alert_logs.count_documents(
+            {"staff_id": staff["id"], "status": "sent", "created_at": {"$gte": since}})
+        log = {
+            "id": str(uuid.uuid4()), "lead_id": lead["id"], "staff_id": staff["id"],
+            "staff_name": staff["name"], "to": staff["mobile"],
+            "score_type": label, "tier": tier, "body": body,
+            "delayed": delayed, "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if recent >= ceiling:
+            log.update({"status": "digest", "sid": None, "error": "Hourly ceiling reached — digest fallback"})
             await db.alert_logs.insert_one(dict(log))
-            await ws_manager.broadcast("dashboard", {"type": "alert", "log": {k: v for k, v in log.items()}})
+            continue
+        result = await asyncio.to_thread(send_sms, staff["mobile"], body)
+        log.update({"status": result["status"], "sid": result["sid"], "error": result["error"]})
+        await db.alert_logs.insert_one(dict(log))
+        await ws_manager.broadcast("dashboard", {"type": "alert", "log": {k: v for k, v in log.items()}})
 
 
 @router.post("/leads/{lead_id}/spin")

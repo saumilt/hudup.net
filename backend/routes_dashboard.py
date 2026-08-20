@@ -148,7 +148,7 @@ EXPORT_COLUMNS = [
     ("tier_340b", "340B Tier"), ("shade_340b", "340B Shade"), ("tier_rpm", "RPM Tier"),
     ("first_name", "First Name"), ("last_name", "Last Name"),
     ("specialty", "Specialty"), ("city", "City"), ("state", "State"),
-    ("phone", "Phone"), ("email", "Email"), ("practice", "Practice"),
+    ("phone", "Phone"), ("email", "Email"), ("practice", "Practice"), ("practice_type", "Practice Type"),
     ("tot_clms", "Total Claims"), ("tot_cost", "Total Drug Cost"),
     ("avg_per_claim", "Avg Per Claim"), ("interests", "Interests"),
     ("event_id", "Event"), ("associate_name", "Associate"),

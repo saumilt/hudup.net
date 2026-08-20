@@ -139,6 +139,8 @@ export default function Dashboard() {
           api.get("/dashboard/counters").then((r) => setCounters(r.data)).catch(() => {});
         } else if (msg.type === "alert") {
           setAlerts((prev) => [msg.log, ...prev]);
+        } else if (msg.type === "alert_update") {
+          setAlerts((prev) => prev.map((a) => (a.sid === msg.sid ? { ...a, status: msg.status, error: msg.error || a.error } : a)));
         } else if (msg.type === "spin") {
           setLeads((prev) => prev.map((l) => (l.id === msg.lead_id ? { ...l, spun: true, prize: msg.prize } : l)));
         }

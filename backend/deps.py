@@ -117,6 +117,24 @@ async def get_live_session() -> dict | None:
 
 
 # ---------- Twilio ----------
+def _e164(num: str) -> str:
+    """Normalize a phone number to E.164 (US default) so Twilio accepts it."""
+    if not num:
+        return num
+    n = num.strip()
+    has_plus = n.startswith("+")
+    digits = "".join(ch for ch in n if ch.isdigit())
+    if not digits:
+        return num
+    if has_plus:
+        return "+" + digits
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    return "+" + digits
+
+
 def send_sms(to: str, body: str) -> dict:
     """Send an SMS from the backend. Returns {sid, status, error}."""
     sid = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -127,7 +145,11 @@ def send_sms(to: str, body: str) -> dict:
     try:
         from twilio.rest import Client
         tw = Client(sid, token)
-        msg = tw.messages.create(body=body, from_=from_number, to=to)
+        kwargs = {"body": body, "from_": from_number, "to": _e164(to)}
+        app_url = os.environ.get("APP_URL")
+        if app_url:
+            kwargs["status_callback"] = app_url.rstrip("/") + "/api/twilio/status"
+        msg = tw.messages.create(**kwargs)
         return {"sid": msg.sid, "status": msg.status, "error": None}
     except Exception as e:
         return {"sid": None, "status": "failed", "error": str(e)}

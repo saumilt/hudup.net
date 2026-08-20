@@ -2,7 +2,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, timezone
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form
 from starlette.middleware.cors import CORSMiddleware
 
 from deps import db, ws_manager, hash_pin, verify_pin, set_setting, get_setting
@@ -20,6 +20,18 @@ app = FastAPI(title="BoothIQ API")
 @app.get("/api/")
 async def root():
     return {"message": "BoothIQ API", "status": "ok"}
+
+
+@app.post("/api/twilio/status")
+async def twilio_status(MessageSid: str = Form(None), MessageStatus: str = Form(None), ErrorCode: str = Form(None)):
+    """Twilio delivery-status webhook — updates the alert log so failures are visible."""
+    if MessageSid:
+        patch = {"status": MessageStatus or "unknown"}
+        if ErrorCode:
+            patch["error"] = f"Twilio error {ErrorCode}"
+        await db.alert_logs.update_one({"sid": MessageSid}, {"$set": patch})
+        await ws_manager.broadcast("dashboard", {"type": "alert_update", "sid": MessageSid, **patch})
+    return {"ok": True}
 
 
 app.include_router(auth_router)
