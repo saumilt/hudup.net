@@ -1,0 +1,169 @@
+import React, { useEffect, useState, useCallback } from "react";
+import { api, formatApiError } from "@/lib/api";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/crm/CrmShell";
+import { TierPill, money, Btn, Field, inputCls, EmptyState, Modal } from "@/components/crm/kit";
+import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight } from "lucide-react";
+
+const TIERS = ["", "GREEN", "YELLOW", "BLUE", "RED"];
+
+export default function Medicare() {
+  const [years, setYears] = useState([2024]);
+  const [form, setForm] = useState({ dataset_year: 2024, npi: "", last_name: "", first_name: "", city: "", state: "", specialty: "", tier_340b: "", tier_rpm: "", sort: "tot_cost", page: 1, page_size: 25 });
+  const [data, setData] = useState({ results: [], total: 0 });
+  const [loading, setLoading] = useState(false);
+  const [sel, setSel] = useState({});
+  const [advOpen, setAdvOpen] = useState(false);
+  const [conds, setConds] = useState([{ field: "tot_cost", op: "gte", value: 1000000 }]);
+  const [connector, setConnector] = useState("AND");
+  const [schema, setSchema] = useState([]);
+  const [mode, setMode] = useState("simple");
+
+  useEffect(() => {
+    api.get("/medicare/years").then((r) => setYears(r.data.years)).catch(() => {});
+    api.get("/medicare/filter-schema").then((r) => setSchema(r.data.fields)).catch(() => {});
+  }, []);
+
+  const runSearch = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      if (mode === "advanced") {
+        const r = await api.post("/medicare/advanced-search", { dataset_year: form.dataset_year, connector, conditions: conds, sort: form.sort, page, page_size: form.page_size });
+        setData(r.data);
+      } else {
+        const r = await api.post("/medicare/search", { ...form, page });
+        setData(r.data);
+      }
+      setForm((f) => ({ ...f, page }));
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally {
+      setLoading(false);
+    }
+  }, [form, mode, conds, connector]);
+
+  useEffect(() => { runSearch(1); /* eslint-disable-next-line */ }, []);
+
+  const createLead = async (row) => {
+    try {
+      const r = await api.post("/crm/leads", {
+        org_name: null, contact_first: row.first_name, contact_last: row.last_name,
+        source: "Medicare Search", matched_npi: row.npi, dataset_year: row.dataset_year || form.dataset_year,
+        specialty: row.specialty, city: row.city, state: row.state, priority: "Medium",
+      });
+      toast.success(`Lead ${r.data.lead_number} created for Dr. ${row.last_name}`);
+      row.crm = { status: r.data.status, id: r.data.id };
+      setData((d) => ({ ...d }));
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const bulkCreate = async () => {
+    const rows = data.results.filter((r) => sel[r.npi] && !r.crm);
+    if (!rows.length) return toast.error("Select unconverted rows first");
+    for (const row of rows) await createLead(row);
+    setSel({});
+  };
+
+  const saveSearch = async () => {
+    const name = window.prompt("Name this search");
+    if (!name) return;
+    await api.post("/crm/saved-searches", { name, entity: "medicare", query: mode === "advanced" ? { mode, connector, conditions: conds, dataset_year: form.dataset_year } : { mode, ...form } });
+    toast.success("Search saved");
+  };
+
+  const totalPages = Math.max(1, Math.ceil(data.total / form.page_size));
+
+  return (
+    <div>
+      <PageHeader title="Medicare Search" subtitle={`Query the CMS Part D dataset · ${data.total.toLocaleString()} matches`}>
+        <select data-testid="ms-year" value={form.dataset_year} onChange={(e) => setForm({ ...form, dataset_year: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
+          {years.map((y) => <option key={y} value={y}>Year {y}</option>)}
+        </select>
+        <Btn variant="ghost" onClick={() => setMode(mode === "simple" ? "advanced" : "simple")} data-testid="ms-toggle-mode"><Filter className="h-4 w-4" /> {mode === "simple" ? "Advanced" : "Simple"}</Btn>
+        <Btn variant="ghost" onClick={saveSearch} data-testid="ms-save"><Save className="h-4 w-4" /> Save</Btn>
+      </PageHeader>
+
+      <div className="p-6">
+        {/* search form */}
+        {mode === "simple" ? (
+          <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
+            {[["last_name", "Last name"], ["first_name", "First name"], ["npi", "NPI"], ["city", "City"], ["state", "State"], ["specialty", "Specialty"]].map(([k, l]) => (
+              <Field key={k} label={l}><input data-testid={`ms-${k}`} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={inputCls} /></Field>
+            ))}
+            <Field label="340B tier"><select data-testid="ms-t340" value={form.tier_340b} onChange={(e) => setForm({ ...form, tier_340b: e.target.value })} className={inputCls}>{TIERS.map((t) => <option key={t} value={t}>{t || "Any"}</option>)}</select></Field>
+            <Field label="RPM tier"><select data-testid="ms-trpm" value={form.tier_rpm} onChange={(e) => setForm({ ...form, tier_rpm: e.target.value })} className={inputCls}>{TIERS.map((t) => <option key={t} value={t}>{t || "Any"}</option>)}</select></Field>
+            <div className="col-span-2 flex items-end md:col-span-4"><Btn onClick={() => runSearch(1)} data-testid="ms-search"><Search className="h-4 w-4" /> Search</Btn></div>
+          </div>
+        ) : (
+          <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm">
+              <span className="font-semibold text-slate-600">Match</span>
+              <select value={connector} onChange={(e) => setConnector(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm"><option>AND</option><option>OR</option></select>
+              <span className="text-slate-500">of the following</span>
+            </div>
+            {conds.map((c, i) => (
+              <div key={i} className="mb-2 flex flex-wrap items-center gap-2">
+                <select value={c.field} onChange={(e) => { const n = [...conds]; n[i] = { ...c, field: e.target.value }; setConds(n); }} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+                  {schema.map((f) => <option key={f.field} value={f.field}>{f.label}</option>)}
+                </select>
+                <select value={c.op} onChange={(e) => { const n = [...conds]; n[i] = { ...c, op: e.target.value }; setConds(n); }} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+                  {(schema.find((f) => f.field === c.field)?.ops || ["gte", "lte", "eq"]).map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <input value={c.value} onChange={(e) => { const n = [...conds]; n[i] = { ...c, value: e.target.value }; setConds(n); }} className="w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+                <button onClick={() => setConds(conds.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">✕</button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <Btn variant="ghost" onClick={() => setConds([...conds, { field: "tot_clms", op: "gte", value: 1000 }])}><Plus className="h-4 w-4" /> Add condition</Btn>
+              <Btn onClick={() => runSearch(1)} data-testid="ms-adv-search"><Search className="h-4 w-4" /> Run</Btn>
+            </div>
+          </div>
+        )}
+
+        {/* results */}
+        <div className="mb-3 flex items-center justify-between">
+          <Btn variant="dark" onClick={bulkCreate} data-testid="ms-bulk-create"><Plus className="h-4 w-4" /> Create leads from selected</Btn>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <button disabled={form.page <= 1} onClick={() => runSearch(form.page - 1)} className="rounded p-1 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+            Page {form.page} / {totalPages}
+            <button disabled={form.page >= totalPages} onClick={() => runSearch(form.page + 1)} className="rounded p-1 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="p-3"><input type="checkbox" onChange={(e) => { const s = {}; if (e.target.checked) data.results.forEach((r) => (s[r.npi] = true)); setSel(s); }} /></th>
+                <th className="p-3">Physician</th><th className="p-3">NPI</th><th className="p-3">Specialty</th>
+                <th className="p-3">Location</th><th className="p-3">Claims</th><th className="p-3">Drug Cost</th>
+                <th className="p-3">$/Claim</th><th className="p-3">340B</th><th className="p-3">RPM</th>
+                <th className="p-3">CRM</th><th className="p-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={12} className="p-8 text-center text-slate-400">Searching…</td></tr>}
+              {!loading && data.results.length === 0 && <tr><td colSpan={12}><EmptyState icon={Search} title="No physicians match" hint="Adjust your filters and search again." /></td></tr>}
+              {!loading && data.results.map((r) => (
+                <tr key={r.npi} data-testid={`ms-row-${r.npi}`} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="p-3"><input type="checkbox" checked={!!sel[r.npi]} onChange={(e) => setSel({ ...sel, [r.npi]: e.target.checked })} /></td>
+                  <td className="p-3 font-semibold text-slate-800">Dr. {r.first_name} {r.last_name}</td>
+                  <td className="p-3 font-mono text-xs text-slate-500">{r.npi}</td>
+                  <td className="p-3 text-slate-600">{r.specialty}</td>
+                  <td className="p-3 text-slate-600">{r.city}, {r.state}</td>
+                  <td className="p-3">{Number(r.tot_clms).toLocaleString()}</td>
+                  <td className="p-3">{money(r.tot_cost)}</td>
+                  <td className="p-3">{money(r.avg_per_claim)}</td>
+                  <td className="p-3"><TierPill kind="" tier={r.tier_340b} /></td>
+                  <td className="p-3"><TierPill kind="" tier={r.tier_rpm} /></td>
+                  <td className="p-3">{r.crm ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">{r.crm.status || "In CRM"}</span> : <span className="text-slate-300">—</span>}</td>
+                  <td className="p-3">{!r.crm && <Btn onClick={() => createLead(r)} data-testid={`ms-create-${r.npi}`} className="px-2 py-1"><Plus className="h-3.5 w-3.5" /> Lead</Btn>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

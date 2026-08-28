@@ -10,6 +10,10 @@ from routes_auth import router as auth_router
 from routes_admin import router as admin_router
 from routes_kiosk import router as kiosk_router
 from routes_dashboard import router as dashboard_router
+from routes_users import router as users_router
+from routes_medicare import router as medicare_router
+from routes_crm import router as crm_router
+from routes_crm_meetings import router as crm_meetings_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -38,6 +42,10 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(kiosk_router)
 app.include_router(dashboard_router)
+app.include_router(users_router)
+app.include_router(medicare_router)
+app.include_router(crm_router)
+app.include_router(crm_meetings_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -99,6 +107,39 @@ async def startup():
                      os.environ.get("ADMIN_PIN", "482913"), "Admin", "admin")
     await _seed_user(os.environ.get("STAFF_EMAIL", "staff@boothiq.com"),
                      os.environ.get("STAFF_PIN", "715264"), "Sales Rep", "staff")
+    await _seed_user(os.environ.get("LEAD_MANAGER_EMAIL", "leadmanager@boothiq.com"),
+                     os.environ.get("LEAD_MANAGER_PIN", "639201"), "Lead Manager", "lead_manager")
+    await _seed_user(os.environ.get("ACCOUNT_MANAGER_EMAIL", "accountmanager@boothiq.com"),
+                     os.environ.get("ACCOUNT_MANAGER_PIN", "528174"), "Account Manager", "account_manager")
+
+    # CRM indexes.
+    await db.crm_leads.create_index("id", unique=True)
+    await db.crm_leads.create_index("account_manager_id")
+    await db.crm_leads.create_index("status")
+    await db.crm_leads.create_index("matched_npi")
+    await db.crm_leads.create_index("last_activity_at")
+    await db.crm_opportunities.create_index("owner_id")
+    await db.crm_opportunities.create_index("stage")
+    await db.crm_tasks.create_index([("assigned_to", 1), ("status", 1)])
+    await db.crm_tasks.create_index("due_at")
+    await db.crm_meetings.create_index("start_at")
+    await db.crm_meetings.create_index("owner_id")
+    await db.physicians.create_index("dataset_year")
+
+    # One-time migration: tag existing datasets/physicians as dataset_year 2024
+    # and denormalize 340B/RPM tiers so Medicare Search can filter by tier.
+    if await db.sessions.count_documents({"dataset_year": {"$exists": False}}) > 0:
+        await db.sessions.update_many({"dataset_year": {"$exists": False}},
+                                      {"$set": {"dataset_year": 2024}})
+    if await db.physicians.count_documents({"dataset_year": {"$exists": False}}) > 0:
+        await db.physicians.update_many({"dataset_year": {"$exists": False}},
+                                        {"$set": {"dataset_year": 2024}})
+    live = await db.sessions.find_one({"is_live": True}, {"_id": 0, "id": 1})
+    if live and await db.physicians.count_documents(
+            {"session_id": live["id"], "tier_340b": {"$exists": False}}) > 0:
+        from tiers import recompute_tiers
+        n = await recompute_tiers(live["id"])
+        logger.info(f"Tier denormalization complete for live dataset ({n} physicians)")
 
     # Seed default settings.
     if await get_setting("convention_state") is None:

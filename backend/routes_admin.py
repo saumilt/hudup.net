@@ -59,6 +59,7 @@ def detect_mapping(headers: list[str]) -> dict:
 # ---------------- Sessions ----------------
 class SessionInput(BaseModel):
     name: str
+    dataset_year: int = 2024
 
 
 @router.post("/sessions")
@@ -66,6 +67,7 @@ async def create_session(data: SessionInput, admin=Depends(require_admin)):
     doc = {
         "id": str(uuid.uuid4()),
         "name": data.name,
+        "dataset_year": data.dataset_year,
         "status": "draft",  # draft | processing | finalized
         "is_live": False,
         "files": [],
@@ -248,6 +250,7 @@ async def _process_file(sid: str, fid: str):
                 "last_upper": last.upper(), "first_upper": first.upper(),
                 "first_initial": (first[:1].upper() if first else ""),
                 "city": city, "state": state.upper(), "specialty": specialty,
+                "dataset_year": s.get("dataset_year", 2024),
             }
             set_on_insert.update(raw_set)
             batch.append(UpdateOne(
@@ -330,6 +333,9 @@ async def finalize_session(sid: str, admin=Depends(require_admin)):
         "status": "finalized", "coverage": coverage,
         "finalized_at": datetime.now(timezone.utc).isoformat(),
     }})
+    # Denormalize 340B/RPM tiers onto physicians for Medicare Search.
+    from tiers import recompute_tiers
+    asyncio.create_task(recompute_tiers(sid))
     return coverage
 
 
@@ -383,6 +389,11 @@ async def save_thresholds(data: ThresholdInput, admin=Depends(require_admin)):
     merged = dict(DEFAULT_THRESHOLDS)
     merged.update(data.thresholds)
     await set_setting("thresholds", merged)
+    # Thresholds affect stored 340B tiers — recompute the live dataset in the background.
+    live = await db.sessions.find_one({"is_live": True}, {"_id": 0, "id": 1})
+    if live:
+        from tiers import recompute_tiers
+        asyncio.create_task(recompute_tiers(live["id"], merged))
     return merged
 
 
@@ -594,6 +605,7 @@ async def seed_sample(admin=Depends(require_admin)):
             "first_initial": first[0].upper(),
             "city": random.choice(cities[st]), "state": st, "specialty": spec,
             "tot_clms": clms, "tot_cost": cost, "avg_per_claim": cost / clms,
+            "dataset_year": 2024, "row_count": rowcount,
         })
     await db.physicians.insert_many(docs)
     coverage = {
@@ -605,6 +617,7 @@ async def seed_sample(admin=Depends(require_admin)):
     }
     session_doc = {
         "id": sid, "name": "Synthetic Sample Dataset", "status": "finalized", "is_live": True,
+        "dataset_year": 2024,
         "files": [{"file_id": "synthetic", "filename": "synthetic_sample.csv", "rows": total_rows, "status": "done"}],
         "column_mapping": None, "progress": {"current_file": None, "rows_processed": total_rows, "eta_seconds": 0},
         "coverage": coverage, "created_at": datetime.now(timezone.utc).isoformat(),
@@ -612,4 +625,6 @@ async def seed_sample(admin=Depends(require_admin)):
     }
     await db.sessions.update_many({}, {"$set": {"is_live": False}})
     await db.sessions.insert_one(dict(session_doc))
+    from tiers import recompute_tiers
+    await recompute_tiers(sid)
     return {"ok": True, "session_id": sid, "physicians": len(docs)}

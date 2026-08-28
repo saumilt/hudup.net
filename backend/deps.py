@@ -65,6 +65,21 @@ async def require_admin(request: Request) -> dict:
     return user
 
 
+def require_roles(*allowed_roles):
+    """Return a dependency that allows any of the given roles (admin always allowed)."""
+    allowed = set(allowed_roles) | {"admin"}
+
+    async def _dep(request: Request) -> dict:
+        user = await get_current_user(request)
+        if user.get("active") is False:
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+        if user.get("role") not in allowed:
+            raise HTTPException(status_code=403, detail="You do not have access to this resource")
+        return user
+
+    return _dep
+
+
 # ---------- WebSocket manager ----------
 class WSManager:
     def __init__(self):

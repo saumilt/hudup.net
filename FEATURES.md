@@ -134,6 +134,7 @@ Events · Data Ingestion · Scoring (threshold editor + live calibration counts)
 - Preview vs production: changes are made in preview; production (`hudlup.net`) requires redeploy. The top-right version badge indicates the running build.
 
 ## 15b. Changelog
+- **v1.6** — CRM layer: new roles Lead Manager + Account Manager and admin user management; lead lifecycle (statuses, status history, priority, notes, activity timeline); Medicare Search (simple + advanced AND/OR builder, multi-year dataset_year, tier columns, create-lead-from-result + bulk, saved searches, year-comparison); lead assign/bulk-assign + convert to Opportunity; Opportunities pipeline; Tasks; Meetings (schedule/reschedule/cancel/complete + .ics + Twilio SMS reminder; email + Google Calendar reserved); Accounts + physician contacts w/ duplicate detection; role dashboards/reports. Existing dataset migrated to dataset_year 2024 with denormalized 340B/RPM tiers.
 - **v1.5** — Moved chunked CSV upload staging from pod-local `/tmp` to Emergent object storage (`backend/storage.py`); ingestion is now correct on multi-pod deployments. Verified single- and multi-chunk boundary stitching (exact row counts + claim sums) and preserved CSV quoting.
 - **v1.4** — 340B green shading (GREEN/GREEN+/GREEN++), dual concentric tier rings on the wheel (outer 340B, inner RPM), SMS Delivery Health banner, per-screen version badge, practice city/state capture, lead-submit validation fix.
 

@@ -39,6 +39,15 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v1.6 (2026-06) — CRM layer (Lead Manager & Account Manager)
+- **New roles**: `lead_manager`, `account_manager` (+ admin user management at `/crm/users`; `require_roles` dependency). Demo logins seeded.
+- **CRM leads**: lifecycle statuses + immutable status-history, priority, dual ownership (Lead Mgr + Account Mgr), notes, combined activity timeline, Medicare snapshot (tiers + figures) captured on match/convert.
+- **Medicare Search**: simple + advanced AND/OR filter builder, multi-year (`dataset_year`), results table with 340B/RPM tiers + CRM status, create-lead-from-result + bulk create, saved searches, year-comparison. Existing dataset migrated to dataset_year 2024; tiers denormalized onto physicians (recomputed at finalize / threshold-change).
+- **Assignment & conversion**: assign / bulk-assign to Account Manager (manager-only), convert lead → Opportunity.
+- **Opportunities** pipeline (stages + stage history, auto won/lost), **Tasks** (my/team/overdue/upcoming), **Meetings** (schedule/reschedule/cancel/complete, next-step task, downloadable `.ics`, Twilio SMS reminder). Email invite + Google Calendar hooks reserved (activate when keys set).
+- **Accounts + physician contacts** with duplicate detection. **Role dashboards/reports** for Lead Manager & Account Manager.
+- New backend files: `routes_crm.py`, `routes_crm_meetings.py`, `routes_medicare.py`, `routes_users.py`, `crm_common.py`, `tiers.py`, `notifications.py`. New frontend: `components/crm/*` + `pages/crm/*`. Verified: 42/42 backend + 9/9 web e2e (iteration 9). Version → v1.6.
+
 ## v1.5 (2026-06) — Deployment fix
 - Chunked CSV upload staging moved off pod-local `/tmp` to **Emergent object storage** (`backend/storage.py`). Each 4MB chunk is stored as its own part object and stream-read back in order during aggregation — bounded memory, correct on multi-pod deployments. Verified single + multi-chunk boundary stitching (300/300 rows, exact claim sums), CSV quoting preserved. Version badge bumped to v1.5.
 

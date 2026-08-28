@@ -1,0 +1,44 @@
+{
+  "summary": "Full e2e verification of BoothIQ v1.6 CRM layer (web + backend). Backend: 42/42 pytest cases pass in /app/backend/tests/test_iteration9_crm_v16.py — auth+RBAC (4 roles login, non-admin blocked from POST /api/users -> 403, account_manager blocked from /crm/leads/{id}/assign + /crm/leads/bulk-assign -> 403), admin user mgmt (create/list/patch role+active/reset-pin, created user then logs in with new pin), Medicare Search (years incl. 2024, filter-schema, POST /search with tier_340b=GREEN returns rows with correct tier, advanced-search AND + OR, physician detail, year-comparison), CRM leads (manual create + create-from-medicare with matched_npi snapshot at tier GREEN, get, list with q + role scoping (AM sees only own), PATCH, status change adds history, invalid status -> 400, match-medicare on manual lead, assign by manager, bulk-assign, convert to opportunity with O-##### number, add note), opportunities (list role-scoped, stage=Closed Won auto-sets status=won + stage_history push), tasks (my/overdue/upcoming scopes, complete), meetings (create returns notifications list with email=not_configured + google_calendar=not_configured + sms present per spec, reschedule, ICS download returns text/calendar with BEGIN:VCALENDAR body, complete creates next-step task, cancel), accounts + physician duplicate detection (2nd POST with same first/last/state returns duplicate:true), reports (lead_manager: total_leads/by_status/conversion_rate; account_manager: my_leads/pipeline_value_by_stage), and kiosk privacy regression (POST /api/kiosk/leads leaks no tier_340b/tier_rpm/medicare_snapshot/matched_npi/shade_340b/score/avg_per_claim). Frontend (web e2e via Playwright): login redirects PASS for all four roles — admin/lead_manager/account_manager -> /crm and staff -> /dashboard; CRM sidebar navigation works; /crm/medicare renders and search returned 58 tier badges + at least one Create Lead per row (medicare data is live); /crm/leads shows New Lead modal + search/filter selects; /crm/opportunities shows kanban with Discovery/Closed Won columns and the converted TEST_Opp (5K) cards visible; /crm/meetings shows Schedule Meeting + Tasks tab with New Task + scope selectors (my/team/overdue/upcoming); /crm/accounts shows New + Physician Contacts tab; /crm/users (admin) renders users table with role dropdown + Reset PIN + Active checkbox + New User CTA; lead_manager attempting /crm/users is correctly redirected back to /crm (admin-only guard works); /kiosk (no auth) HTML contains NONE of the forbidden terms (tier_340b, tier_rpm, medicare_snapshot, avg_per_claim) — kiosk/booth privacy is fully preserved; booth Dashboard still loads with live counters (5 spins, 900 prizes left, tier buckets).",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Login page + Users & Roles + Opportunities kanban stage <select>", "issues": ["React hydration console warning: 'In HTML, <span> cannot be a child of <option>' — a <span> is rendered inside an <option> element (likely a colored dot inside stage/role select options in kit.js or Users/Opportunities). Non-blocking but should be cleaned up: put the visual indicator outside the <option> or use plain text inside <option>."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9_crm_v16.py",
+    "/app/test_reports/pytest/pytest_iter9.xml"
+  ],
+  "action_items": [
+    "(Cosmetic) Remove <span> children from <option> elements to silence React hydration warning — check role/stage/priority selects that render coloured pills inside <option>. Use plain text or move indicator outside the option.",
+    "(Info) Twilio 30034 A2P 10DLC banner still shown on Booth Dashboard — expected per handoff note (account issue, not code)."
+  ],
+  "critical_code_review_comments": [
+    "routes_users.py: only admin can POST/PATCH/reset-pin (require_admin) — GET is intentionally open to any authenticated user for the assignment picker (LM needs it). Confirmed 403 for non-admin on all mutating endpoints.",
+    "routes_crm.py MANAGER = require_roles(ROLE_LEAD_MANAGER) restricts /leads/{id}/assign and /leads/bulk-assign to lead_manager only (admin is NOT included). If product wants admin to also be able to assign, add ROLE_ADMIN here. Currently admin would get 403 on these two — worth flagging to product; not tested as failing since spec explicitly lists lead_manager as the assigning role.",
+    "routes_crm.py _lead_scope for account_manager returns {account_manager_id: user.id} only, so an AM cannot even see a lead they created but which is not assigned to them. Verified in test_am_scoping_returns_only_assigned. Confirm this matches product intent — currently the fallback OR (created_by | account_manager_id) only applies to 'staff', not AM.",
+    "routes_crm_meetings.py create_meeting auto-advances lead status only if current status ∈ {New, Attempting Contact, Contacted, Qualified}. Meetings created against leads already in 'Opportunity' will not regress status — good.",
+    "routes_medicare.py advanced-search 'contains' op uses regex without escaping — user-supplied value passes through as a regex pattern. Low-risk (search returns docs and users are authenticated), but consider re.escape() to avoid ReDoS / accidental matches.",
+    "notifications.py notify_meeting returns a list of {channel, status} dicts — frontend Meetings.js should read email/gcal statuses from that list, not as dict lookup (my initial test assumed dict; corrected).",
+    "server.py CORS uses allow_origins from env with allow_credentials=True; env is currently 'CORS_ORIGINS=*' which combined with credentials is disallowed by the CORS spec — browsers may reject credentialed requests from arbitrary origins. This app uses Bearer token in localStorage (not cookies) so it works today, but if a future feature moves to cookies this will bite. Recommend replacing '*' with an explicit origins list."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9_crm_v16.py",
+    "/app/test_reports/iteration_9.json",
+    "/app/test_reports/pytest/pytest_iter9.xml"
+  ],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "100% (all 9 e2e flows verified)"},
+  "test_credentials": "Used seeded accounts from /app/memory/test_credentials.md — admin/482913, leadmanager/639201, accountmanager/528174, staff/715264. Also created and logged in as ephemeral TEST_ users via POST /api/users then /auth/login.",
+  "seed_data_creation": "Test suite creates TEST_* prefixed CRM leads, accounts, physicians, tasks and one converted TEST_Opp opportunity (Closed Won). All are filterable by 'TEST_' prefix. No bulk-delete endpoint exists; leaving in place for next iteration to consume.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Regression: pytest /app/backend/tests/test_iteration9_crm_v16.py -v -o 'addopts=' (the repo pytest.ini adds -n auto which conflicts with a single-file run; override with -o 'addopts='). Live medicare dataset is present for dataset_year=2024 — first_green_npi is captured dynamically. Meetings notifications is a LIST of {channel, status} not a dict. Kiosk privacy is verified via /api/kiosk/leads response shape (only id + spin_available). Auth is Bearer JWT in localStorage as boothiq_token — NOT httpOnly cookies (auth_testing.md checklist for cookies/CORS-credentials does not apply to this app).",
+  "rca of the issue": "N/A — no bugs found. Only one non-blocking React hydration console warning (<span> inside <option>) which does not affect behavior."
+}

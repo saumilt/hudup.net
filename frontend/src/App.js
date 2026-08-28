@@ -11,6 +11,17 @@ import Dashboard from "@/pages/Dashboard";
 import Admin from "@/pages/Admin";
 import LeadsScreen from "@/pages/LeadsScreen";
 import LeadDetail from "@/pages/LeadDetail";
+import CrmShell from "@/components/crm/CrmShell";
+import CrmDashboard from "@/pages/crm/CrmDashboard";
+import CrmLeads from "@/pages/crm/Leads";
+import CrmLeadDetail from "@/pages/crm/LeadDetail";
+import CrmOpportunities from "@/pages/crm/Opportunities";
+import CrmMeetings from "@/pages/crm/Meetings";
+import CrmAccounts from "@/pages/crm/Accounts";
+import CrmMedicare from "@/pages/crm/Medicare";
+import CrmUsers from "@/pages/crm/Users";
+
+const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
 
 function App() {
   return (
@@ -53,6 +64,23 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/crm"
+            element={
+              <ProtectedRoute roles={CRM_ROLES}>
+                <CrmShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<CrmDashboard />} />
+            <Route path="leads" element={<CrmLeads />} />
+            <Route path="leads/:id" element={<CrmLeadDetail />} />
+            <Route path="opportunities" element={<CrmOpportunities />} />
+            <Route path="meetings" element={<CrmMeetings />} />
+            <Route path="accounts" element={<CrmAccounts />} />
+            <Route path="medicare" element={<CrmMedicare />} />
+            <Route path="users" element={<ProtectedRoute adminOnly><CrmUsers /></ProtectedRoute>} />
+          </Route>
         </Routes>
       </BrowserRouter>
       <Toaster position="top-center" richColors />
