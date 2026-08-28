@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { TIER_STYLES } from "@/components/TierBadge";
 import {
   Activity, WifiOff, Bell, Download, Filter, UserPlus, StickyNote, ExternalLink,
-  LogOut, Settings2, RefreshCw, AlertTriangle, CheckCircle2, XCircle,
+  LogOut, Settings2, RefreshCw, AlertTriangle, CheckCircle2, XCircle, LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { APP_VERSION } from "@/version";
@@ -203,6 +203,7 @@ export default function Dashboard() {
               <Bell className="h-4 w-4" />
               {failedAlerts.length > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />}
             </button>
+            <button data-testid="nav-crm" onClick={() => nav("/crm")} className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-primary/90"><LayoutGrid className="h-3.5 w-3.5" /> CRM</button>
             <button data-testid="nav-leads" onClick={() => nav("/leads")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Filter className="h-3.5 w-3.5" /> Leads</button>
             <button data-testid="export-csv" onClick={() => fetchExport("csv")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</button>
             <button data-testid="export-xlsx" onClick={() => fetchExport("xlsx")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> XLSX</button>

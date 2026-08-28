@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Activity, Database, SlidersHorizontal, Gift, MessageSquare, Users, CalendarDays, ArrowLeft, LogOut } from "lucide-react";
+import { Activity, Database, SlidersHorizontal, Gift, MessageSquare, Users, CalendarDays, ArrowLeft, LogOut, LayoutGrid } from "lucide-react";
 import IngestionPanel from "@/pages/admin/IngestionPanel";
 import ScoringPanel from "@/pages/admin/ScoringPanel";
 import PrizesPanel from "@/pages/admin/PrizesPanel";
@@ -36,6 +36,7 @@ export default function Admin() {
           </div>
           <div className="flex items-center gap-2">
             <span data-testid="app-version" className="mr-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-400">v{APP_VERSION}</span>
+            <button data-testid="goto-crm" onClick={() => nav("/crm")} className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90"><LayoutGrid className="h-3.5 w-3.5" /> CRM</button>
             <button data-testid="goto-dashboard" onClick={() => nav("/dashboard")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><ArrowLeft className="h-3.5 w-3.5" /> Dashboard</button>
             <button data-testid="admin-logout" onClick={() => { logout(); nav("/login"); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><LogOut className="h-4 w-4" /></button>
           </div>
