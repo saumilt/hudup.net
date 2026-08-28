@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { LayoutDashboard, Settings2, Activity, Loader2 } from "lucide-react";
+import { LayoutDashboard, Settings2, Activity, Loader2, LayoutGrid } from "lucide-react";
 import { APP_VERSION } from "@/version";
 
 export default function Launcher() {
@@ -30,7 +30,7 @@ export default function Launcher() {
         <p className="mb-12 max-w-2xl text-lg text-slate-500">
           Score physicians in real time against Medicare data, launch the prize wheel, and text your team the moment a high-value lead walks up.
         </p>
-        <div className="grid gap-6 sm:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {/* Kiosk setup card with event selection */}
           <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 h-32 w-full overflow-hidden rounded-xl">
@@ -55,6 +55,12 @@ export default function Launcher() {
             <div className="mb-4 inline-flex rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 p-3 text-white"><LayoutDashboard className="h-6 w-6" /></div>
             <h3 className="text-xl font-semibold text-slate-900">Staff Dashboard</h3>
             <p className="mt-1 text-sm text-slate-500">Live lead feed, tiers &amp; alerts</p>
+          </button>
+
+          <button data-testid="launch-crm" onClick={() => nav("/crm")} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg">
+            <div className="mb-4 inline-flex rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 p-3 text-white"><LayoutGrid className="h-6 w-6" /></div>
+            <h3 className="text-xl font-semibold text-slate-900">CRM</h3>
+            <p className="mt-1 text-sm text-slate-500">Leads, Medicare search, opportunities, meetings &amp; tasks</p>
           </button>
 
           <button data-testid="launch-admin" onClick={() => nav("/admin")} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg">
