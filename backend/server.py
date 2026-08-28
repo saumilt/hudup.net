@@ -134,6 +134,14 @@ async def startup():
 
     logger.info("BoothIQ startup complete")
 
+    # Initialize object storage for chunked CSV upload staging (best-effort).
+    try:
+        from storage import init_storage
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Object storage init failed: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown():

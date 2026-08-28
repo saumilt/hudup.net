@@ -38,3 +38,7 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 1. Build the Expo mobile staff dashboard (live feed + alerts + sync status) against the shared backend.
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
+
+## v1.5 (2026-06) — Deployment fix
+- Chunked CSV upload staging moved off pod-local `/tmp` to **Emergent object storage** (`backend/storage.py`). Each 4MB chunk is stored as its own part object and stream-read back in order during aggregation — bounded memory, correct on multi-pod deployments. Verified single + multi-chunk boundary stitching (300/300 rows, exact claim sums), CSV quoting preserved. Version badge bumped to v1.5.
+

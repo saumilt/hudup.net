@@ -1,22 +1,21 @@
 """Admin console: ingestion sessions, chunked resumable upload, streaming
 aggregation, coverage report, scoring thresholds, prizes, alert rules, roster."""
 import os
+import io
 import csv
 import uuid
 import random
 import asyncio
-from pathlib import Path
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 
 from deps import db, require_admin, ws_manager, get_setting, set_setting, get_thresholds
 from scoring import score_340b, tier_counts_for_thresholds, DEFAULT_THRESHOLDS
+from storage import put_object, get_object, chunk_path
 
 router = APIRouter(prefix="/api/admin")
-
-UPLOAD_DIR = Path("/tmp/boothiq_uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # CMS Part D column detection by header name (case/space insensitive).
 COLUMN_MAP = {
@@ -102,34 +101,31 @@ async def delete_session(sid: str, admin=Depends(require_admin)):
         raise HTTPException(400, "This dataset is live. Go live with another dataset first, then delete this one.")
     deleted = (await db.physicians.delete_many({"session_id": sid})).deleted_count
     await db.sessions.delete_one({"id": sid})
-    # Clean up any uploaded chunk files.
-    import shutil
-    try:
-        shutil.rmtree(UPLOAD_DIR / sid, ignore_errors=True)
-    except Exception:
-        pass
     return {"ok": True, "physicians_removed": deleted}
 
 
-# ---------------- Chunked resumable upload ----------------
+# ---------------- Chunked resumable upload (object storage) ----------------
 @router.post("/sessions/{sid}/files/init")
 async def init_file(sid: str, filename: str = Form(...), admin=Depends(require_admin)):
     s = await db.sessions.find_one({"id": sid})
     if not s:
         raise HTTPException(404, "Session not found")
     fid = str(uuid.uuid4())
-    fdir = UPLOAD_DIR / sid
-    fdir.mkdir(parents=True, exist_ok=True)
-    (fdir / f"{fid}.part").write_bytes(b"")
-    file_entry = {"file_id": fid, "filename": filename, "rows": 0, "status": "uploading", "bytes": 0}
+    file_entry = {"file_id": fid, "filename": filename, "rows": 0, "status": "uploading",
+                  "bytes": 0, "parts": 0}
     await db.sessions.update_one({"id": sid}, {"$push": {"files": file_entry}})
     return {"file_id": fid}
 
 
 @router.get("/sessions/{sid}/files/{fid}/status")
 async def file_status(sid: str, fid: str, admin=Depends(require_admin)):
-    p = UPLOAD_DIR / sid / f"{fid}.part"
-    received = p.stat().st_size if p.exists() else 0
+    s = await db.sessions.find_one({"id": sid}, {"files": 1})
+    received = 0
+    if s:
+        for f in s.get("files", []):
+            if f.get("file_id") == fid:
+                received = f.get("bytes", 0)
+                break
     return {"received": received}
 
 
@@ -138,28 +134,26 @@ async def upload_chunk(
     sid: str, fid: str, index: int = Form(...), total: int = Form(...),
     chunk: UploadFile = File(...), admin=Depends(require_admin),
 ):
-    p = UPLOAD_DIR / sid / f"{fid}.part"
-    if not p.exists():
+    s = await db.sessions.find_one({"id": sid}, {"files": 1})
+    if not s or not any(f.get("file_id") == fid for f in s.get("files", [])):
         raise HTTPException(404, "File not initialized")
     data = await chunk.read()
-    with open(p, "ab") as f:
-        f.write(data)
+    # Store each chunk as its own part object (put overwrites, so retries are idempotent).
+    put_object(chunk_path(sid, fid, index), data, "application/octet-stream")
     await db.sessions.update_one(
         {"id": sid, "files.file_id": fid},
-        {"$set": {"files.$.bytes": p.stat().st_size}},
+        {"$inc": {"files.$.bytes": len(data)}, "$max": {"files.$.parts": total}},
     )
-    return {"received": p.stat().st_size, "index": index, "total": total}
+    return {"received": len(data), "index": index, "total": total}
 
 
 @router.get("/sessions/{sid}/files/{fid}/preview")
 async def preview_file(sid: str, fid: str, admin=Depends(require_admin)):
-    p = UPLOAD_DIR / sid / f"{fid}.part"
-    if not p.exists():
-        raise HTTPException(404, "File not found")
-    with open(p, "r", encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.reader(f)
-        headers = next(reader, [])
-        sample = next(reader, [])
+    data = get_object(chunk_path(sid, fid, 0))
+    text = data.decode("utf-8-sig", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    headers = next(reader, [])
+    sample = next(reader, [])
     mapping = detect_mapping(headers)
     return {"headers": headers, "sample": sample, "detected_mapping": mapping}
 
@@ -175,19 +169,34 @@ async def set_mapping(sid: str, data: MappingInput, admin=Depends(require_admin)
 
 
 async def _process_file(sid: str, fid: str):
-    """Stream a CSV row-by-row, aggregating by NPI with $inc. Never loads to memory."""
-    p = UPLOAD_DIR / sid / f"{fid}.part"
+    """Stream a CSV row-by-row from object storage, aggregating by NPI with $inc.
+    Fetches one part object at a time and yields complete lines, so memory stays
+    bounded regardless of file size."""
     s = await db.sessions.find_one({"id": sid})
-    if not s or not p.exists():
+    if not s:
         return
+    fentry = next((f for f in s.get("files", []) if f.get("file_id") == fid), None)
+    if not fentry:
+        return
+    parts = fentry.get("parts", 0)
     await db.sessions.update_one({"id": sid}, {"$set": {"status": "processing", "progress.current_file": fid}})
     started = datetime.now(timezone.utc)
     rows = 0
     batch = []
     from pymongo import UpdateOne
 
-    with open(p, "r", encoding="utf-8-sig", errors="replace") as f:
-        reader = csv.reader(f)
+    def _lines():
+        buf = b""
+        for i in range(parts):
+            buf += get_object(chunk_path(sid, fid, i))
+            *complete, buf = buf.split(b"\n")
+            for ln in complete:
+                yield ln.decode("utf-8-sig", errors="replace")
+        if buf:
+            yield buf.decode("utf-8-sig", errors="replace")
+
+    with nullcontext():
+        reader = csv.reader(_lines())
         headers = next(reader, [])
         mapping = (s.get("column_mapping")) or detect_mapping(headers)
         # Capture EVERY column: sum numeric measures into `extra`, carry categoricals
