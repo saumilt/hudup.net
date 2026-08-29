@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2 } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -26,6 +26,7 @@ export default function LeadDetail() {
   const [enrich, setEnrich] = useState({ loading: false, result: null, picked: {} });
   const [busy, setBusy] = useState(false);
   const [ai, setAi] = useState({ busy: false, prep: null, brief: null });
+  const [agent, setAgent] = useState({ busy: false, plan: null, picked: {} });
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -146,6 +147,27 @@ export default function LeadDetail() {
     try { const r = await api.post(`/crm/leads/${id}/ai/research`); setAi((a) => ({ ...a, busy: false, brief: r.data.brief })); }
     catch (e) { setAi((a) => ({ ...a, busy: false, brief: formatApiError(e.response?.data?.detail) })); }
   };
+  const runAgent = async () => {
+    setModal("agent"); setAgent({ busy: true, plan: null, picked: {} });
+    try {
+      const r = await api.post(`/crm/leads/${id}/agent/plan`);
+      const picked = {};
+      (r.data.next_actions || []).forEach((_, i) => { picked[i] = true; });
+      setAgent({ busy: false, plan: r.data, picked });
+    } catch (e) { setAgent({ busy: false, plan: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
+  };
+  const runAgentExecute = async () => {
+    const acts = (agent.plan.next_actions || []).filter((_, i) => agent.picked[i]);
+    if (!acts.length) return toast.error("Select at least one action");
+    const payload = { actions: acts.map((a) => ({ type: a.type, value: a.value, label: a.label })) };
+    if (acts.some((a) => a.type === "email")) payload.email = agent.plan.draft_email;
+    if (acts.some((a) => a.type === "sms")) payload.sms = agent.plan.draft_sms;
+    try {
+      const r = await api.post(`/crm/leads/${id}/agent/execute`, payload);
+      toast.success(`AI Agent ran: ${r.data.executed.join(", ") || "nothing"}`);
+      setModal(null); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   return (
     <div>
@@ -178,6 +200,7 @@ export default function LeadDetail() {
           <Btn data-testid="action-text" variant="ghost" onClick={() => setModal("text")}><MessageSquare className="h-4 w-4" /> Text</Btn>
           <Btn data-testid="action-schedule" variant="ghost" onClick={() => nav("/crm/meetings")}><CalendarPlus className="h-4 w-4" /> Schedule</Btn>
           <Btn data-testid="action-research" variant="ghost" onClick={aiResearch}><Sparkles className="h-4 w-4" /> Research</Btn>
+          <Btn data-testid="action-agent" variant="dark" onClick={runAgent}><Bot className="h-4 w-4" /> AI Agent</Btn>
           <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
           <Btn data-testid="action-enrich-company" variant="dark" onClick={runCompanyEnrich}><Building2 className="h-4 w-4" /> Enrich Practice</Btn>
         </div>
@@ -375,6 +398,44 @@ export default function LeadDetail() {
       <Modal open={modal === "research"} onClose={() => setModal(null)} title="✨ AI Practice Research" wide>
         {ai.busy && <p className="py-6 text-center text-slate-400">Researching…</p>}
         {!ai.busy && ai.brief && <div data-testid="research-brief" className="whitespace-pre-wrap text-sm text-slate-700">{ai.brief}</div>}
+      </Modal>
+
+      <Modal open={modal === "agent"} onClose={() => setModal(null)} title="🤖 AI Agent — Review & Approve" wide>
+        {agent.busy && <p className="py-6 text-center text-slate-400">Agent is analyzing this lead…</p>}
+        {agent.plan?.error && <p className="py-4 text-center text-red-600">{agent.plan.error}</p>}
+        {agent.plan && !agent.plan.error && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-[10px] font-bold uppercase text-slate-400">AI Summary</p>
+              <p className="text-sm text-slate-700">{agent.plan.summary}</p>
+            </div>
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase text-slate-400">Recommended actions — approve what runs</p>
+              <div className="space-y-2">
+                {(agent.plan.next_actions || []).map((a, i) => (
+                  <label key={i} data-testid={`agent-action-${i}`} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
+                    <input type="checkbox" checked={!!agent.picked[i]} onChange={(e) => setAgent({ ...agent, picked: { ...agent.picked, [i]: e.target.checked } })} className="mt-1 h-4 w-4 accent-primary" />
+                    <span className="min-w-0"><span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-primary">{a.type}</span> <span className="text-sm text-slate-700">{a.value || a.label}</span></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {agent.plan.draft_email && (
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] font-bold uppercase text-slate-400">Draft email (sends only if the email action is approved)</p>
+                <p className="text-sm font-semibold text-slate-800">{agent.plan.draft_email.subject}</p>
+                <p className="whitespace-pre-wrap text-sm text-slate-600">{agent.plan.draft_email.body}</p>
+              </div>
+            )}
+            {agent.plan.draft_sms && (
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-[10px] font-bold uppercase text-slate-400">Draft SMS</p>
+                <p className="text-sm text-slate-600">{agent.plan.draft_sms}</p>
+              </div>
+            )}
+            <Btn onClick={runAgentExecute} data-testid="agent-run" className="w-full justify-center"><Check className="h-4 w-4" /> Approve & Run</Btn>
+          </div>
+        )}
       </Modal>
 
       <Modal open={modal === "company"} onClose={() => setModal(null)} title="Enrich Practice — Review Before Saving" wide>

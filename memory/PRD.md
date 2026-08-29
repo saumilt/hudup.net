@@ -39,6 +39,19 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v2.2 (2026-06) — Wave 8: Autonomous AI Agent
+- **AI Agent** (`routes_agent.py`, Emergent universal key): on any lead, **AI Agent** generates a human-in-the-loop action plan — summary, reasoning, 3-4 prioritized `next_actions` (status/task/email/sms), and draft email + SMS. `POST /api/crm/leads/{id}/agent/plan`. The rep approves exactly which actions run; `POST .../agent/execute` applies only approved items (create task, change status, send email via Resend, send SMS via Twilio — all consent-checked) and logs each as an AI-labeled activity. Nothing sends without explicit approval.
+- Verified via curl + UI screenshot. Version → v2.2.
+
+## REMAINING WAVES (9–15) — sequencing & prerequisites
+- **Wave 9 — Territories & Team Management** (no keys): teams, quotas, round-robin lead routing, hierarchy. Next up.
+- **Wave 10 — Forecasting & Custom Dashboards** (no keys): pipeline/revenue forecast, cohort analysis, scheduled report emails.
+- **Wave 11 — External Sync & Public API** (NEEDS creds): Salesforce/HubSpot two-way sync, calendar sync, webhooks/API keys, Zapier.
+- **Wave 12 — Mobile app (Expo)** (new client surface under /app/mobile): rep companion — leads, My Day, call/text/log, sequences.
+- **Wave 13 — Compliance & Governance** (SSO NEEDS creds): audit-log UI, consent center, data retention, permission matrix, SSO/SAML.
+- **Wave 14 — Documents & Proposals** (e-sign provider likely needed): proposal generation, e-sign, collateral library.
+- **Wave 15 — Campaigns & Marketing**: event campaigns, landing/capture forms, attribution.
+
 ## v2.1 (2026-06) — Wave 6 (Automation + Call Lists) & Wave 7 (Data Explorer, Completeness)
 - **Automation Rules** (`automation.py`, `/crm/automation`, manager): WHEN [event] IF [conditions] THEN [actions]. Events: lead_created, status_changed, lead_assigned, medicare_matched, opportunity_created, meeting_completed. Actions: create_task, schedule_followup, change_status, add_tag, start_sequence, notify_manager. Default-safe (task/draft over sending). Hooked into lead create + status change. Verified: "status→Qualified" auto-enrolls a sequence + creates a task.
 - **Smart Call Lists** (`/crm/call-lists`): build a queue from a tier/state/status filter; focused Call Queue UI (Hot/Warm badge, tiers, phone, disposition + notes) with **Save & Next / Skip** auto-advance; each disposition logs a call to the timeline.
