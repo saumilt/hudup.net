@@ -201,25 +201,80 @@ async def route_unassigned(user=Depends(MANAGER)):
 
 
 @router.get("/routing/balance")
-async def routing_balance(user=Depends(MANAGER)):
-    """How evenly this month's new leads are spreading across reps."""
-    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    users = await db.users.find({"role": {"$in": ["account_manager", "lead_manager"]}},
+async def routing_balance(scope: str = "am", user=Depends(MANAGER)):
+    """How evenly new leads spread across reps — this month vs last month.
+    scope=am → account managers only; scope=all → include lead managers too."""
+    now = datetime.now(timezone.utc)
+    this_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_start = (this_start.replace(year=this_start.year - 1, month=12) if this_start.month == 1
+                  else this_start.replace(month=this_start.month - 1))
+    ts, ls = this_start.isoformat(), last_start.isoformat()
+    roles = ["account_manager"] if scope == "am" else ["account_manager", "lead_manager"]
+    users = await db.users.find({"role": {"$in": roles}},
                                 {"_id": 0, "id": 1, "name": 1, "role": 1}).sort("name", 1).to_list(200)
-    reps, total = [], 0
+    reps, total, prev_total = [], 0, 0
     for u in users:
-        c = await db.crm_leads.count_documents(
-            {"account_manager_id": u["id"], "created_at": {"$gte": month_start}})
-        reps.append({"user_id": u["id"], "name": u["name"], "role": u.get("role"), "leads": c})
+        uid = u["id"]
+        c = await db.crm_leads.count_documents({"account_manager_id": uid, "created_at": {"$gte": ts}})
+        p = await db.crm_leads.count_documents({"account_manager_id": uid, "created_at": {"$gte": ls, "$lt": ts}})
+        reps.append({"user_id": uid, "name": u["name"], "role": u.get("role"), "leads": c, "prev": p})
         total += c
+        prev_total += p
     unassigned = await db.crm_leads.count_documents(
-        {"created_at": {"$gte": month_start},
+        {"created_at": {"$gte": ts},
          "$or": [{"account_manager_id": None}, {"account_manager_id": {"$exists": False}}]})
     reps.sort(key=lambda r: r["leads"], reverse=True)
     counts = [r["leads"] for r in reps]
     spread = (max(counts) - min(counts)) if counts else 0
-    return {"month_total": total, "unassigned": unassigned, "reps": reps,
-            "spread": spread, "max": max(counts, default=0)}
+    return {"month_total": total, "prev_total": prev_total, "unassigned": unassigned,
+            "reps": reps, "spread": spread,
+            "max": max(counts + [r["prev"] for r in reps], default=0)}
+
+
+@router.post("/routing/rebalance")
+async def routing_rebalance(user=Depends(MANAGER)):
+    """Even out this month's load: move surplus unworked (status New, not converted)
+    leads from the busiest account manager to the quietest until the spread is ≤ 1."""
+    this_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    ams = await db.users.find({"role": "account_manager"}, {"_id": 0, "id": 1, "name": 1}).to_list(200)
+    if len(ams) < 2:
+        return {"ok": True, "moved": 0}
+    names = {u["id"]: u["name"] for u in ams}
+    counts, unworked = {}, {}
+    for u in ams:
+        uid = u["id"]
+        counts[uid] = await db.crm_leads.count_documents(
+            {"account_manager_id": uid, "created_at": {"$gte": this_start}})
+        lw = await db.crm_leads.find(
+            {"account_manager_id": uid, "status": "New", "created_at": {"$gte": this_start},
+             "opportunity_id": {"$exists": False}},
+            {"_id": 0, "id": 1}).sort("created_at", -1).to_list(2000)
+        unworked[uid] = [l["id"] for l in lw]
+    moved = 0
+    for _ in range(2000):
+        donors = [k for k in counts if unworked.get(k)]
+        if not donors:
+            break
+        busiest = max(donors, key=lambda k: counts[k])
+        quietest = min(counts, key=lambda k: counts[k])
+        if counts[busiest] - counts[quietest] <= 1:
+            break
+        lead_id = unworked[busiest].pop(0)
+        await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+            "account_manager_id": quietest, "account_manager_name": names.get(quietest),
+            "routing_reason": f"Rebalanced — moved from {names.get(busiest)} to even out load",
+            "routed_at": now_iso()}})
+        await log_event("lead", lead_id, "routed", user,
+                        f"Rebalanced from {names.get(busiest)} to {names.get(quietest)}")
+        try:
+            from routes_push import notify_lead_assigned
+            await notify_lead_assigned(quietest, {"id": lead_id})
+        except Exception:
+            pass
+        counts[busiest] -= 1
+        counts[quietest] += 1
+        moved += 1
+    return {"ok": True, "moved": moved}
 
 
 # ==================== QUOTAS ====================

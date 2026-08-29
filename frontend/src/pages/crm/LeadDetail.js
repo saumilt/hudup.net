@@ -4,6 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
+import Softphone from "@/components/crm/Softphone";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
   Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle } from "lucide-react";
 
@@ -374,6 +375,7 @@ export default function LeadDetail() {
       </Modal>
 
       <Modal open={modal === "call"} onClose={() => setModal(null)} title="Log Call" wide>
+        <Softphone lead={lead} user={user} />
         <div className="mb-3"><Btn variant="dark" data-testid="call-ai-prep" onClick={aiPrep} disabled={ai.busy}><Sparkles className="h-4 w-4" /> {ai.busy ? "Preparing…" : "AI Prep Call"}</Btn></div>
         {ai.prep && (
           <div data-testid="call-prep" className="mb-3 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">

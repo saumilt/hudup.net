@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle, BarChart3 } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3, Scale } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -22,6 +22,7 @@ export default function Teams() {
   const [terrs, setTerrs] = useState([]);
   const [att, setAtt] = useState([]);
   const [bal, setBal] = useState(null);
+  const [scope, setScope] = useState("am");
   const [modal, setModal] = useState(null);
   const [team, setTeam] = useState({ name: "", member_ids: [] });
   const [terr, setTerr] = useState({ name: "", states: "", specialties: "", team_id: "" });
@@ -30,10 +31,10 @@ export default function Teams() {
     const [a, t, tr, q, b] = await Promise.all([
       api.get("/users?role=account_manager"), api.get("/crm/teams"),
       api.get("/crm/territories"), api.get("/crm/quotas/attainment"),
-      api.get("/crm/routing/balance"),
+      api.get("/crm/routing/balance", { params: { scope } }),
     ]);
     setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data); setBal(b.data);
-  }, []);
+  }, [scope]);
   useEffect(() => { load(); }, [load]);
 
   const createTeam = async () => {
@@ -54,6 +55,10 @@ export default function Teams() {
   };
   const routeUnassigned = async () => {
     try { const r = await api.post("/crm/leads/route-unassigned"); toast.success(`Routed ${r.data.routed} lead(s)`); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const rebalance = async () => {
+    try { const r = await api.post("/crm/routing/rebalance"); toast.success(r.data.moved ? `Rebalanced ${r.data.moved} lead(s)` : "Already balanced"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const saveQuota = async (row, patch) => {
@@ -118,26 +123,44 @@ export default function Teams() {
         </div>
         {bal && (
           <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="rr-balance">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><BarChart3 className="h-4 w-4 text-primary" /> Lead Distribution (this month)</h2>
-              <span className="text-xs text-slate-400">{bal.month_total} routed{bal.unassigned ? ` · ${bal.unassigned} unassigned` : ""}</span>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><BarChart3 className="h-4 w-4 text-primary" /> Lead Distribution</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-lg border border-slate-200 p-0.5 text-xs">
+                  <button data-testid="rr-scope-am" onClick={() => setScope("am")} className={scope === "am" ? "rounded bg-primary px-2.5 py-1 font-bold text-white" : "px-2.5 py-1 text-slate-500"}>Reps</button>
+                  <button data-testid="rr-scope-all" onClick={() => setScope("all")} className={scope === "all" ? "rounded bg-primary px-2.5 py-1 font-bold text-white" : "px-2.5 py-1 text-slate-500"}>All owners</button>
+                </div>
+                <Btn variant="ghost" onClick={rebalance} data-testid="rr-rebalance"><Scale className="h-4 w-4" /> Even out</Btn>
+              </div>
+            </div>
+            <div className="mb-3 flex items-center gap-4 text-xs text-slate-400">
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-primary" /> This month ({bal.month_total})</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-slate-300" /> Last month ({bal.prev_total})</span>
+              {bal.unassigned > 0 && <span>· {bal.unassigned} unassigned</span>}
             </div>
             {bal.reps.length === 0 ? <p className="text-sm text-slate-400">No reps yet.</p> : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {bal.reps.map((r) => {
                   const pct = bal.month_total ? Math.round((r.leads / bal.month_total) * 100) : 0;
                   const w = bal.max ? Math.round((r.leads / bal.max) * 100) : 0;
+                  const pw = bal.max ? Math.round((r.prev / bal.max) * 100) : 0;
                   return (
                     <div key={r.user_id} data-testid="rr-row" className="flex items-center gap-3 text-sm">
-                      <span className="w-36 truncate font-semibold text-slate-700">{r.name}</span>
-                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-primary" style={{ width: `${w}%` }} /></div>
-                      <span className="w-20 text-right text-xs text-slate-500">{r.leads} · {pct}%</span>
+                      <span className="flex w-40 items-center gap-1 truncate font-semibold text-slate-700">
+                        {r.name}
+                        {r.role === "lead_manager" && <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-bold uppercase text-slate-400">Mgr</span>}
+                      </span>
+                      <div className="flex-1 space-y-1">
+                        <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-primary" style={{ width: `${w}%` }} /></div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-50"><div className="h-full bg-slate-300" style={{ width: `${pw}%` }} /></div>
+                      </div>
+                      <span className="w-24 text-right text-xs text-slate-500">{r.leads} · {pct}%<span className="block text-slate-300">last mo {r.prev}</span></span>
                     </div>
                   );
                 })}
               </div>
             )}
-            <p className="mt-3 text-xs text-slate-400">{bal.month_total === 0 ? "No leads assigned yet this month." : bal.spread === 0 ? "Evenly balanced across reps this month." : `Spread of ${bal.spread} lead(s) between the busiest and quietest rep.`}</p>
+            <p className="mt-3 text-xs text-slate-400">{bal.month_total === 0 ? "No leads assigned yet this month." : bal.spread === 0 ? "Evenly balanced across reps this month." : `Spread of ${bal.spread} lead(s) between the busiest and quietest rep. Tap “Even out” to redistribute unworked leads.`}</p>
           </div>
         )}
       </div>

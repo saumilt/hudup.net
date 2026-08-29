@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 16 — Rebalance Action, Distribution History (this-month vs last-month), AM-Only Filter, and Voice-gated-OFF all verified end-to-end. Backend pytest 13/13 passed (/app/backend/tests/test_iteration16_rebalance_voice.py). Web UI verified as lead_manager: (a) /crm/teams 'rr-balance' panel renders 'This month (26) / Last month (0)' legend, Reps/All owners toggle refetches (scope=am → 3 rows, scope=all → 6 rows including 3 lead_managers with 'Mgr' badge), 'Even out' shows 'Already balanced' toast when spread already ≤1; (b) rebalance backend moved leads earlier and lead L-00044 shows Ownership 'Why assigned — Rebalanced — moved from Asiya to even out load'; (c) LeadDetail Call modal (action-call) renders softphone-disabled with 'Browser calling isn't configured yet…' message, enabled softphone testid absent, and manual Log Call form (call-save) still fully functional.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_rebalance_voice.py",
+    "/app/test_reports/pytest/pytest_iter16.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_teams.routing_rebalance — algorithm is O(2000) safe: donors filtered on `unworked.get(k)` truthy so exhausted busiest is dropped next iteration; break condition `busiest-quietest<=1` bounds moves; loop cap 2000 caps a pathological run. No infinite loop risk.",
+    "routes_teams.routing_rebalance — only moves status=='New', opportunity_id absent, and created_at >= month_start. Matches PRD ('surplus unworked, not converted, this-month'). Good.",
+    "routes_teams.routing_rebalance — logs event via log_event with reason 'Rebalanced from <A> to <B>' and updates lead.routing_reason with 'Rebalanced — moved from <name> to even out load' (as spec'd). Two distinct strings — intentional (audit vs UI) but could be unified to reduce drift.",
+    "routes_teams.routing_balance — 'max' includes prev-month counts (`max(counts + [r['prev'] for r in reps])`) so the bars scale to both series consistently — nice touch for the two-tier bar UI.",
+    "routes_teams.routing_balance — `spread = max(counts)-min(counts)` computed only over `counts` (this-month) — correct; prev is display-only and doesn't affect the rebalance target.",
+    "routes_voice._configured() — correctly gates on all 5 vars including TWIML_APP_SID + VOICE_FROM. GET /voice/config + /voice/token both return {enabled:false} without exposing secrets. Auth is required (ANY_CRM = lead_manager/account_manager/staff). Good.",
+    "routes_voice.py — webhooks /twiml and /status are include_in_schema=False and unauthenticated (correct — Twilio signs them), and no-op safely if _configured() is false. Note: production should add TwilioRequestValidator on X-Twilio-Signature to avoid webhook spoofing when the feature is enabled. Not blocking now (voice is off).",
+    "Softphone.js — clean disabled state, ARIA/testID set. Race guard on enabled===null (renders null) prevents flash of disabled block during config load.",
+    "Teams.js — scope toggle triggers re-fetch via useCallback+scope dep; rebalance calls load() so bars refresh. Toast copy differentiates 0 (Already balanced) vs N moved. UX is tight."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_rebalance_voice.py",
+    "/app/test_reports/iteration_16.json",
+    "/app/test_reports/pytest/pytest_iter16.xml"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (Teams rr-balance scope toggle + rebalance + LeadDetail softphone-disabled + call-save)"},
+  "test_credentials": "Used seeded leadmanager@boothiq.com / 639201 (lead_manager) and accountmanager@boothiq.com / 528174 (account_manager) from /app/memory/test_credentials.md for role-gate checks. No new users created.",
+  "seed_data_creation": "Test created 0–N TESTi16 <hash> leads owned by the busiest AM to force a spread>=5 before rebalance; the rebalance API then redistributed them (moved:>=needed) to bring spread≤1. Leads persist in DB (status=New, phone 5551230000). Idempotency test re-ran rebalance immediately and asserted moved==0. Note: L-00044 in the UI shows the rebalanced routing_reason 'Rebalanced — moved from Asiya to even out load' as expected.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regression file: pytest /app/backend/tests/test_iteration16_rebalance_voice.py -v -o addopts= (13 tests: 4 routing/balance, 4 routing/rebalance, 5 voice-gated-off). API contract confirmed: /api/crm/routing/balance returns {month_total,prev_total,unassigned,reps:[{user_id,name,role,leads,prev}],spread,max}; reps sorted desc by leads; scope=am filters to role=='account_manager', scope=all adds 'lead_manager'. /api/crm/routing/rebalance returns {ok:true,moved:int}, is idempotent (2nd call → moved:0), and requires lead_manager. /api/voice/config → {enabled:false,from_number:null} for any CRM role, 401/403 unauth. /api/voice/token → {enabled:false,token:null}. UI testIDs verified: rr-balance, rr-scope-am, rr-scope-all, rr-rebalance, rr-row, action-call, softphone-disabled, call-save. Voice enable path: set TWILIO_TWIML_APP_SID + TWILIO_VOICE_FROM_NUMBER in backend/.env (API Key SID/Secret already present) and restart backend — Softphone will auto-switch to enabled variant. When enabled, add Twilio request signature validation on /api/voice/twiml + /api/voice/status webhooks.",
+  "rca of the issue": "N/A — no bugs found. All 4 requested behaviors match PRD."
+}
