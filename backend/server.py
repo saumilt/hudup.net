@@ -24,6 +24,7 @@ from routes_growth import router as growth_router
 from routes_agent import router as agent_router
 from routes_teams import router as teams_router
 from routes_forecast import router as forecast_router
+from routes_campaigns import router as campaigns_router, public_router as campaigns_public_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -67,6 +68,8 @@ app.include_router(growth_router)
 app.include_router(agent_router)
 app.include_router(teams_router)
 app.include_router(forecast_router)
+app.include_router(campaigns_router)
+app.include_router(campaigns_public_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -152,6 +155,9 @@ async def startup():
     await db.email_messages.create_index("lead_id")
     await db.enrichment_jobs.create_index("lead_id")
     await db.physicians.create_index("dataset_year")
+    await db.crm_leads.create_index("campaign_id")
+    await db.campaigns.create_index("id", unique=True)
+    await db.campaigns.create_index("capture.slug")
 
     # One-time migration: tag existing datasets/physicians as dataset_year 2024
     # and denormalize 340B/RPM tiers so Medicare Search can filter by tier.

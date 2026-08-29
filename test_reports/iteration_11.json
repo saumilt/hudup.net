@@ -1,0 +1,56 @@
+{
+  "summary": "Iteration 11 — Wave 15 (Marketing Campaigns web+backend) and Wave 12 (Expo mobile rep-companion) end-to-end verified. Backend pytest /app/backend/tests/test_iteration11_campaigns.py: 17/17 passed. All CRM campaign endpoints (meta, create, list-with-stats, detail-with-recent_leads, patch, delete) enforce role gating (lead_manager/admin only; account_manager gets 403 on list + create). Public capture endpoints (no auth) — GET /api/public/campaigns/{slug} returns form config; POST /api/public/campaigns/{slug}/submit creates a CRM lead with source='Campaign', campaign_id, campaign_name, source_details=<campaign name>, and interests -> tags. Enforcement: 400 when require_email=true and email missing; 409 when campaign status is Paused or Completed; 404 for unknown slug. After public submit: campaign stats.captured increments, lead appears in /api/crm/leads and in campaign.recent_leads. Web (Playwright, prize-wheel-hub-4.preview.emergentagent.com): /crm/campaigns nav visible for lead_manager, hidden for account_manager (also route-guarded — direct nav redirects). New Campaign modal creates card (channel/status/budget/goal, capture headline/subhead/interests/thank-you/require_email). Campaign detail shows Captured/Converted/Pipeline/Won stat cards, Public Capture Link, status chips (Draft/Active/Paused/Completed) that PATCH successfully, and 'Recent captured leads' list. Public form at /c/<slug> (unauthenticated context): headline/interest chips/fields render, missing-email inline error appears (data-testid=capture-form-error), successful POST navigates to capture-success state. Mobile (Playwright, prize-wheel-hub-4.expo.preview.emergentagent.com, 390x844): login screen (email+PIN) accepts accountmanager creds and lands on My Day tab (4 stat cards + Today's meetings, Tasks Due, New Leads list including the earlier public-capture 'Doe Cardiology' + 'TESTF TESTL' from the web test). Leads tab lists ~9 leads, search input works, FAB opens New Lead form. Created L-00017 'TEST Mobile Iter11 Cardiology' and landed on its detail. On lead detail all 4 action buttons work (Call, Text, Log Call, Note) plus status chips (status-chip-{Status} PATCH), edit modal (org/email/phone/value/priority) with save-edit persists (phone updated to +15550002222 visible on detail; activity log shows 'Lead details updated'), note (save-note) adds 'Added a note' activity, log-call (Connected disposition) adds 'Call — Connected' activity, and text/SMS (send-text) adds 'SMS sent: …' activity. Profile tab shows user avatar 'AM' + name 'Account Manager' + accountmanager@boothiq.com + role pill + app/environment cards, and logout-button returns to login screen.",
+  "platforms_tested": ["web", "mobile"],
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/crm/leads/{id}/text", "issue": "Carried over from iter10 (unrelated to Wave 15): status='sent' with no actual Twilio messages.create() invocation. Mobile 'Text' action returns success visually but no SMS is dispatched. See iteration_10.json for RCA."}
+    ]
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [
+        {"component": "Campaigns campaign-card", "issue": "Nested <button> inside <button>: the delete-campaign button is rendered inside the campaign-card button. Produces React hydration error: '<button> cannot contain a nested <button>' / 'button cannot be a descendant of button'. Invalid HTML — screen readers and event bubbling may misbehave. Fix: change the outer element to a <div role=\"button\" tabIndex={0}> with keyboard handlers, or move the delete affordance outside the card element.", "selector": "[data-testid='campaign-card'] > [data-testid='delete-campaign']", "priority": "MEDIUM"}
+      ],
+      "integration_issues": [],
+      "design_issues": []
+    },
+    "mobile": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [],
+      "react_native_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_campaigns.py",
+    "/app/test_reports/pytest/pytest_iter11.xml"
+  ],
+  "action_items": [
+    "Fix nested <button> inside campaign-card in /app/frontend/src/pages/crm/Campaigns.js — refactor the card to a non-button container (e.g., div role='button') so the inner delete <button> is not a descendant of another <button>.",
+    "(Carried over, cosmetic) React <span> child of <option> hydration warning in select pills (also flagged iter9/iter10).",
+    "(Carried over) Wire real Twilio messages.create() in /api/crm/leads/{id}/text or gate 'messaging' provider by a distinct env key; today the mobile Text action reports success without actual SMS delivery."
+  ],
+  "critical_code_review_comments": [
+    "routes_campaigns.py public_submit correctly attributes source='Campaign' + source_details + campaign_id/name + tags from interests, and increments _perf.captured via the shared find on {campaign_id}. Good.",
+    "routes_campaigns.py public_submit best-effort calls auto_route_lead + fire_event('lead_created') inside try/except — matches the observed behavior of the earlier 'Doe Cardiology' capture being routed to the account manager's My Day.",
+    "routes_campaigns.CampaignInput has no explicit validators for negative budget or negative goal_leads — currently accepted (e.g., -100). Consider Field(ge=0).",
+    "routes_campaigns.public_submit: 'require any of name/email/phone/org' check happens AFTER the require_email check. Order is fine, but the 'at least a name or contact detail' error message reads oddly when email was provided but was accidentally whitespace (email is 'stripped' only via .strip() truthy). Minor UX only.",
+    "Campaigns.js line 257: <button data-testid='campaign-card'> wrapping another <button data-testid='delete-campaign'> is invalid HTML. React logs a hydration warning in every session. Not a functional blocker but should be refactored.",
+    "CaptureForm.js: input[type='email'] has required attribute AND the JS handler also enforces email — good defense-in-depth. However required=true prevents form submission at all in browsers, so backend 400 is only exercised via API. The inline JS error path (setError('Please enter your email.')) is currently only reachable if the user disables HTML validation.",
+    "mobile app/(tabs)/leads.tsx: FAB position uses bottom: insets.bottom + 100 — works on iOS notched devices, but the +100 offset overlaps the last list item slightly on 390-wide screens (list has paddingBottom:140, so OK, just noting)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_campaigns.py",
+    "/app/test_reports/iteration_11.json",
+    "/app/test_reports/pytest/pytest_iter11.xml"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% (web 8/8 flows, mobile 9/9 flows)"},
+  "test_credentials": "Used seeded accounts from /app/memory/test_credentials.md — leadmanager/639201, accountmanager/528174. No new users seeded.",
+  "seed_data_creation": "Created TEST_iter11 and TEST_web_iter11 prefixed campaigns via /api/crm/campaigns, several TEST_ prefixed captured leads via public /api/public/campaigns/{slug}/submit, and one mobile-created lead L-00017 'TEST Mobile Iter11 Cardiology'. Pytest teardown deletes the TEST_pub campaign but the TEST_iter11 campaign + TEST captured leads remain (identifiable by TEST_iter11 / TESTMOB / TESTF prefixes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iteration11_campaigns.py -v -o addopts=. Mobile testIDs to reuse: login-email-input, login-password-input, login-submit-button; new-lead-fab, leads-search, lead-row-{id}; new-first/new-last/new-org/new-email/new-phone/new-specialty/new-city/new-state/new-priority-{Low|Medium|High|Urgent}/create-lead-submit; on lead detail: lead-back/lead-edit/action-call/action-text/action-log-call/action-note/status-chip-{Status}; note modal: note-input + save-note; text modal: text-body-input + send-text; edit modal: edit-org/edit-email/edit-phone/edit-value/edit-priority-{...}/save-edit; profile: logout-button. Web capture flow: use a fresh browser context (unauthenticated) to hit /c/<slug>. Public API slug for the pre-existing 'Spring Cardiology Expo' campaign was C-00001 with the slug used by the main agent in smoke test.",
+  "rca of the issue": "N/A — no functional bugs found in Wave 15 or Wave 12. Only one carry-over invalid-HTML nesting bug in Campaigns.js (button-in-button) that fires a React hydration warning on every render of /crm/campaigns."
+}

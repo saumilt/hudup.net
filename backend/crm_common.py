@@ -24,7 +24,7 @@ LEAD_STATUSES = [
 ]
 LEAD_SOURCES = [
     "Booth / Event", "Manual Entry", "Medicare Search", "CSV Import",
-    "Referral", "Website", "Other",
+    "Referral", "Website", "Campaign", "Other",
 ]
 PRIORITIES = ["Low", "Medium", "High", "Urgent"]
 

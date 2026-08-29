@@ -6,7 +6,7 @@ import { APP_VERSION } from "@/version";
 import {
   LayoutDashboard, Users2, Target, CalendarClock, Building2, Search,
   Activity, LogOut, Settings2, UserCog, Radio, Plus, ChevronDown, Grid3x3,
-  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3, PhoneCall, Zap, Compass, TrendingUp, Network,
+  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3, PhoneCall, Zap, Compass, TrendingUp, Network, Megaphone,
 } from "lucide-react";
 
 const ROLE_LABEL = {
@@ -138,6 +138,11 @@ export default function CrmShell() {
           {(user?.role === "admin" || user?.role === "lead_manager") && (
             <NavLink to="/crm/automation" data-testid="nav-automation" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Zap className="h-4 w-4" /> Automation
+            </NavLink>
+          )}
+          {(user?.role === "admin" || user?.role === "lead_manager") && (
+            <NavLink to="/crm/campaigns" data-testid="nav-campaigns" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+              <Megaphone className="h-4 w-4" /> Campaigns
             </NavLink>
           )}
           {(user?.role === "admin" || user?.role === "lead_manager") && (
