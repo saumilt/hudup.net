@@ -88,3 +88,22 @@ export function StatCard({ label, value, sub, testid }) {
     </div>
   );
 }
+
+// Win-probability derived from the two Medicare tiers (color-coded).
+export function leadProbability(snap) {
+  const a = snap?.tier_340b, b = snap?.tier_rpm;
+  const has = (t) => a === t || b === t;
+  if (has("GREEN")) return { label: "Hot", color: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50" };
+  if (has("YELLOW")) return { label: "Warm", color: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50" };
+  if (has("BLUE")) return { label: "Cool", color: "bg-blue-500", text: "text-blue-700", bg: "bg-blue-50" };
+  return { label: "Cold", color: "bg-slate-300", text: "text-slate-500", bg: "bg-slate-50" };
+}
+export function ProbabilityBadge({ snapshot, showLabel = true, testid }) {
+  const p = leadProbability(snapshot);
+  return (
+    <span data-testid={testid} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${p.bg}`} title={`Win probability: ${p.label}`}>
+      <span className={`h-2.5 w-2.5 rounded-full ${p.color}`} />
+      {showLabel && <span className={`text-xs font-bold ${p.text}`}>{p.label}</span>}
+    </span>
+  );
+}

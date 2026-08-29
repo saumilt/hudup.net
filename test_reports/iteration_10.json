@@ -1,0 +1,49 @@
+{
+  "summary": "BoothIQ v1.7 engagement layer end-to-end verified (web + backend). Backend pytest /app/backend/tests/test_iteration10_v17_engage.py: 19 passed, 1 skipped, 0 failed. Home command-center endpoints (/api/crm/home/attention, /my-day, /insights) all return correct shape and the 'green_physicians' insight is emitted from the live medicare dataset. Global search /api/crm/search returns typed lead/opportunity/physician hits (short-query <2 chars returns []). Sales actions: real Resend email send returns provider_id, call log with follow-up creates a task, text records SMS message. Consent preferences: PATCH toggles do_not_call/do_not_text/email_suppressed/sms_consent/preferred_method persist on GET; email send returns 409 when email_suppressed=true; text returns 409 when do_not_text=true. PDL enrichment: synthetic-name lead correctly handles both matched/no-match paths; real-name path returns preview {found, confidence} or a valid 'no confident match'. Physician workspace returns {physician, leads, activities}. Admin providers list flags enrichment/email/messaging/voice as configured and mailbox_oauth as NOT configured; non-admin correctly gets 403 on GET+PUT; PUT toggles persist. Kiosk /api/kiosk/leads response leaks none of tier_340b/tier_rpm/medicare_snapshot/avg_per_claim/shade_340b/score. Frontend Playwright e2e: Launcher renders open-events + open-crm; admin/staff role-based login redirects work (admin -> /crm, staff -> /dashboard); CrmShell top-bar shows workspace-switcher with switch-events + switch-home, global-search returns 6 typed results for 'L-', +Create menu opens; CrmDashboard shows 'My Day', 'Needs your attention' and 'Opportunities BoothIQ Found' sections with insight cards (insight-green_physicians etc.); /crm/providers renders all four slots (enrichment/email/messaging/mailbox_oauth) with enabled checkbox; /crm/leads/:id action bar shows all 5 buttons (Email/Call/Text/Schedule/Enrich), preferences panel shows 4 checkboxes + method select, ProbabilityBadge shows 'Hot' for the GREEN-tier lead, Email modal opens with subject+body fields, Enrich returns 'no confident match' inline (valid per spec); kiosk page HTML contains none of the forbidden Medicare terms.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/crm/leads/{id}/text", "issue": "Because TWILIO_AUTH_TOKEN is set in backend/.env, provider slot 'messaging' is_slot_ready() -> True and the endpoint returns status:'sent'. However routes_crm_engage.send_text does NOT actually invoke Twilio Messaging API — it only inserts into sms_messages. So the response says 'sent' but no SMS is delivered. Per the mocked_apis note, messaging is expected to be 'queued_not_configured' until Phase 4. Two fix options: (a) split env keys so messaging uses e.g. TWILIO_MESSAGING_SID (not present) and stays not-configured, or (b) wire an actual Twilio messages.create() call before flipping status to 'sent'. Currently the 'ok:true, status:sent' response is misleading."}
+    ]
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Login page / CRM shell selects with pill children", "issues": ["Pre-existing (also flagged in iteration_9) React hydration warning: '<span> cannot be a child of <option>'. Non-blocking — put the coloured pill outside the <option> or use plain text inside."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration10_v17_engage.py",
+    "/app/test_reports/pytest/pytest_iter10.xml"
+  ],
+  "action_items": [
+    "Decide messaging slot policy: either mark the 'messaging' slot's env_key as an SMS-specific key so 'configured' is false until Phase 4, or actually call Twilio messages.create() before returning status='sent'. Right now the endpoint reports 'sent' with no delivery.",
+    "(Cosmetic, carried over) Remove <span> children from <option> elements to silence React hydration warning."
+  ],
+  "critical_code_review_comments": [
+    "providers.py: 'messaging' and 'voice' both bind env_key='TWILIO_AUTH_TOKEN', so any account with the alerts token becomes 'ready' for messaging even though the send code path is not wired. Consider separate env keys or an explicit 'wired' flag in the catalog.",
+    "routes_crm_engage.send_text writes to db.sms_messages but never records provider_id and never awaits Twilio's SDK, so status='sent' is only advisory. Add a real send + capture SID like the email path does with Resend.",
+    "routes_crm_engage.accept_enrich mirrors work_email -> lead.email and phone -> lead.phone ONLY when the current field is empty (never overwrites). Good, matches 'Never auto-overwrites' spec. Consider also mirroring full_name/job_title if the lead's contact_first/last is empty.",
+    "enrichment.py._call: `include_if_matched=\"true\"` and `titlecase=\"true\"` are passed as strings (PDL v5 accepts booleans as query params). Works today, but consider using proper booleans for clarity.",
+    "server.py CORS with allow_origins='*' + allow_credentials=True is still spec-invalid (carried over from iter9). App uses Bearer token in localStorage so it works, but this will bite when cookies are introduced.",
+    "routes_crm_engage.py get_provider_settings + set_provider_setting return the same object even when the requested slot is unknown — set_provider_setting will happily upsert an arbitrary 'slot' string. Consider validating slot ∈ known slots.",
+    "routes_crm_engage.enrich_lead swallows PDL 429/402/500 as HTTPException with the raw provider message. Might want to log full response for observability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration10_v17_engage.py",
+    "/app/test_reports/iteration_10.json",
+    "/app/test_reports/pytest/pytest_iter10.xml"
+  ],
+  "success_rate": {"backend": "100% (19/19 executed, 1 skipped by-design on PDL no-match)", "frontend": "100% (all 9 e2e flows verified)"},
+  "test_credentials": "Used seeded accounts from /app/memory/test_credentials.md — admin/482913, leadmanager/639201, accountmanager/528174, staff/715264. No new users seeded.",
+  "seed_data_creation": "Created TEST_v17-prefixed CRM leads via /api/crm/leads (real-name lead attached to a GREEN-tier NPI and a synthetic 'TESTFIRST TESTLAST_NoMatch_XYZ' lead). Not cleaned up — filterable by 'TEST_v17' prefix.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iteration10_v17_engage.py -v -o addopts= . TWILIO_AUTH_TOKEN is set in backend/.env so /api/crm/leads/{id}/text returns status='sent' (but no Twilio API call is actually made — see minor bug above). Real Resend send works; use to=delivered@resend.dev. PDL enrichment: real names on live medicare dataset may still return 'no confident match' (valid per spec) — test_enrich_real_lead_preview_and_accept skips in that case. The React <span> in <option> hydration warning is unchanged from iter9 and is cosmetic.",
+  "rca of the issue": "N/A — no functional bug. One misleading-status concern in /api/crm/leads/{id}/text (see backend_issues.minor); the endpoint claims status='sent' because the provider slot is env-configured via TWILIO_AUTH_TOKEN, but no Twilio Messaging API call is actually made, so SMS is not delivered to the phone. Root cause: providers.py slot 'messaging' uses TWILIO_AUTH_TOKEN (also used by 'voice' + alerts). Mitigation: either (1) use a dedicated env key like TWILIO_MESSAGING_SERVICE_SID for the messaging slot, or (2) implement the actual Twilio messages.create() call in send_text before returning."
+}

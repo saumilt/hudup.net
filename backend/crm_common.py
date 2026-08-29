@@ -67,3 +67,60 @@ async def log_activity(lead_id: str, entry: dict):
         {"id": lead_id},
         {"$push": {"activity": entry}, "$set": {"last_activity_at": entry["at"]}},
     )
+
+
+# ---------------- Communication consent / preferences ----------------
+DEFAULT_COMM = {
+    "do_not_call": False,
+    "do_not_text": False,
+    "email_suppressed": False,
+    "sms_consent": False,
+    "sms_consent_source": None,
+    "sms_consent_at": None,
+    "opt_out_at": None,
+    "preferred_method": None,   # email | phone | sms
+    "preferred_time": None,
+}
+
+# ---------------- Unified activity timeline (crm_activities) ----------------
+async def log_event(entity_type: str, entity_id: str, kind: str, user: dict | None,
+                    summary: str, meta: dict | None = None, lead_id: str | None = None):
+    """Central timeline entry. entity_type: lead|physician|account|opportunity."""
+    entry = {
+        "id": _uuid(),
+        "entity_type": entity_type, "entity_id": entity_id,
+        "lead_id": lead_id or (entity_id if entity_type == "lead" else None),
+        "kind": kind,
+        "by_id": (user or {}).get("id"), "by_name": (user or {}).get("name", "System"),
+        "summary": summary, "meta": meta or {}, "at": now_iso(),
+    }
+    await db.crm_activities.insert_one(dict(entry))
+    entry.pop("_id", None)
+    if entry["lead_id"]:
+        await db.crm_leads.update_one({"id": entry["lead_id"]},
+                                      {"$set": {"last_activity_at": entry["at"]}})
+    return entry
+
+
+def confidence_band(likelihood: int | None) -> str:
+    """PDL likelihood is 1-10. Map to confidence band."""
+    if likelihood is None:
+        return "LOW"
+    if likelihood >= 8:
+        return "HIGH"
+    if likelihood >= 6:
+        return "MEDIUM"
+    return "LOW"
+
+
+def provenance(value, source: str, confidence: str, url: str | None = None, previous=None) -> dict:
+    return {
+        "value": value, "source": source, "source_url": url,
+        "confidence": confidence, "retrieved_at": now_iso(),
+        "verified": False, "accepted_by": None, "previous_value": previous,
+    }
+
+
+def _uuid() -> str:
+    import uuid
+    return str(uuid.uuid4())

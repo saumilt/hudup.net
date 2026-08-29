@@ -39,6 +39,17 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v1.7 (2026-06) — Platform Expansion Phase 1 + Enrichment + Email
+- **Home redesign**: authenticated home is now a role-based **workspace selector** (BoothIQ Events vs BoothIQ CRM) with remembered last-workspace, positioning copy, and a workflow strip. `/home`, `/events` (Events command center) added.
+- **CRM shell**: top-left **workspace switcher**, **global search** (`/api/crm/search` across leads/opps/physicians), global **+Create**. Nav gains Providers (admin).
+- **CRM Home command center**: greeting + **Needs your attention** cards + **My Day** queue + dynamic **Opportunities BoothIQ Found** insights (`/api/crm/home/attention|my-day|insights`).
+- **Sales workspace** on every lead: first-class action bar `[Email][Call][Text][Schedule][✨Enrich]`, **win-probability** color badge (Hot/Warm/Cool/Cold from 340B+RPM), **communication consent/preferences** (Do Not Call/Text, email suppression, SMS consent, preferred method), and a **unified activity timeline** (crm_activities merged with embedded activity).
+- **One-click Enrichment (People Data Labs, live)**: `/api/crm/leads/{id}/enrich` + `/enrich/accept` — side-by-side preview, accept-selected, **data provenance** (source/confidence/retrieved/accepted-by), never auto-overwrites. Physician workspace at `/crm/physicians/{npi}`.
+- **Email (Resend, live)**: `/api/crm/leads/{id}/email` sends real email, logs to timeline, respects suppression. **Call** logging + disposition + follow-up task. **Text** records message (Twilio two-way send deferred to Phase 4 — returns queued_not_configured).
+- **Provider abstraction** (`providers.py`) + admin **Providers** page (`/crm/providers`, `/api/admin/providers`): enable/disable/auto per vendor slot; live `configured` flags. Foundation: consent model, provenance, unified timeline.
+- New env: `RESEND_API_KEY`, `RESEND_FROM`, `PDL_API_KEY`. New backend: `routes_crm_engage.py`, `providers.py`, `enrichment.py`, `emailer.py`. Verified: 19/19 backend + web e2e (iteration 10), kiosk privacy intact. Version → v1.7.
+- **Remaining phases (planned)**: Bulk Import wizard; deeper Enrichment (company/LinkedIn discovery, bulk); Communications (Gmail/Outlook OAuth, two-way SMS, browser calling/conference/recording, unified inbox); AI copilot + sequences + automation + smart call lists; Intelligence (relationship map, data explorer, analytics).
+
 ## v1.6 (2026-06) — CRM layer (Lead Manager & Account Manager)
 - **New roles**: `lead_manager`, `account_manager` (+ admin user management at `/crm/users`; `require_roles` dependency). Demo logins seeded.
 - **CRM leads**: lifecycle statuses + immutable status-history, priority, dual ownership (Lead Mgr + Account Mgr), notes, combined activity timeline, Medicare snapshot (tiers + figures) captured on match/convert.

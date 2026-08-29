@@ -9,7 +9,7 @@ from scoring import score_340b, score_rpm, tier_color_340b
 from crm_common import (
     ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF,
     LEAD_STATUSES, LEAD_SOURCES, PRIORITIES, DEFAULT_OPP_STAGES,
-    now_iso, next_seq, activity, log_activity,
+    now_iso, next_seq, activity, log_activity, log_event, DEFAULT_COMM,
 )
 
 router = APIRouter(prefix="/api/crm")
@@ -105,6 +105,7 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
         "dataset_year": data.dataset_year, "medicare_snapshot": snap,
         "created_by": user["id"], "created_by_name": user.get("name"),
         "created_at": now_iso(), "last_activity_at": now_iso(), "next_activity_at": None,
+        "comm": dict(DEFAULT_COMM),
         "notes": [], "activity": [],
         "status_history": [{"from": None, "to": "New", "by_id": user["id"],
                             "by_name": user.get("name"), "reason": None, "at": now_iso()}],
@@ -155,6 +156,14 @@ async def get_lead(lead_id: str, user=Depends(ANY_CRM)):
     lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(404, "Lead not found")
+    # Merge embedded activity with the unified crm_activities timeline.
+    events = await db.crm_activities.find({"lead_id": lead_id}, {"_id": 0}).to_list(500)
+    combined = list(lead.get("activity") or []) + events
+    combined.sort(key=lambda e: e.get("at") or "", reverse=True)
+    lead["activity"] = combined
+    if "comm" not in lead or lead["comm"] is None:
+        from crm_common import DEFAULT_COMM as _DC
+        lead["comm"] = dict(_DC)
     return lead
 
 

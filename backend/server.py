@@ -14,6 +14,7 @@ from routes_users import router as users_router
 from routes_medicare import router as medicare_router
 from routes_crm import router as crm_router
 from routes_crm_meetings import router as crm_meetings_router
+from routes_crm_engage import router as crm_engage_router, admin_router as providers_admin_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -46,6 +47,8 @@ app.include_router(users_router)
 app.include_router(medicare_router)
 app.include_router(crm_router)
 app.include_router(crm_meetings_router)
+app.include_router(crm_engage_router)
+app.include_router(providers_admin_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -124,6 +127,12 @@ async def startup():
     await db.crm_tasks.create_index("due_at")
     await db.crm_meetings.create_index("start_at")
     await db.crm_meetings.create_index("owner_id")
+    await db.crm_activities.create_index("lead_id")
+    await db.crm_activities.create_index([("entity_type", 1), ("entity_id", 1)])
+    await db.crm_activities.create_index("at")
+    await db.crm_tasks.create_index("assigned_to")
+    await db.email_messages.create_index("lead_id")
+    await db.enrichment_jobs.create_index("lead_id")
     await db.physicians.create_index("dataset_year")
 
     # One-time migration: tag existing datasets/physicians as dataset_year 2024

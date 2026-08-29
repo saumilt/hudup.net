@@ -3,8 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal } from "@/components/crm/kit";
-import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope } from "lucide-react";
+import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge } from "@/components/crm/kit";
+import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -18,6 +19,12 @@ export default function LeadDetail() {
   const [npi, setNpi] = useState("");
   const [showConvert, setShowConvert] = useState(false);
   const [conv, setConv] = useState({ value: "", stage: "Discovery" });
+  const [modal, setModal] = useState(null); // email | call | text | enrich
+  const [email, setEmail] = useState({ subject: "", html: "" });
+  const [call, setCall] = useState({ disposition: "Connected", notes: "", follow_up_task: "" });
+  const [text, setText] = useState("");
+  const [enrich, setEnrich] = useState({ loading: false, result: null, picked: {} });
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -57,6 +64,50 @@ export default function LeadDetail() {
       toast.success(`Converted → ${r.data.opp_number}`); setShowConvert(false); load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const comm = lead.comm || {};
+  const sendEmail = async () => {
+    if (!email.subject.trim() || !email.html.trim()) return toast.error("Subject and body required");
+    setBusy(true);
+    try {
+      await api.post(`/crm/leads/${id}/email`, { subject: email.subject, html: `<p>${email.html.replace(/\n/g, "<br/>")}</p>` });
+      toast.success("Email sent"); setModal(null); setEmail({ subject: "", html: "" }); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
+  };
+  const logCall = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/crm/leads/${id}/call`, { disposition: call.disposition, notes: call.notes || null, follow_up_task: call.follow_up_task || null });
+      toast.success("Call logged"); setModal(null); setCall({ disposition: "Connected", notes: "", follow_up_task: "" }); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
+  };
+  const sendText = async () => {
+    if (!text.trim()) return;
+    try {
+      const r = await api.post(`/crm/leads/${id}/text`, { body: text });
+      toast.success(r.data.note || "Message logged"); setModal(null); setText(""); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const runEnrich = async () => {
+    setModal("enrich"); setEnrich({ loading: true, result: null, picked: {} });
+    try {
+      const r = await api.post(`/crm/leads/${id}/enrich`);
+      const picked = {};
+      Object.entries(r.data.found || {}).forEach(([k, v]) => { if (v && !(Array.isArray(v) && !v.length)) picked[k] = true; });
+      setEnrich({ loading: false, result: r.data, picked });
+    } catch (e) { setEnrich({ loading: false, result: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
+  };
+  const acceptEnrich = async () => {
+    const fields = Object.keys(enrich.picked).filter((k) => enrich.picked[k]);
+    if (!fields.length) return toast.error("Select at least one field");
+    try {
+      await api.post(`/crm/leads/${id}/enrich/accept`, { job_id: enrich.result.job_id, fields });
+      toast.success("Enriched data saved"); setModal(null); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const setPref = async (patch) => {
+    try { await api.patch(`/crm/leads/${id}/preferences`, patch); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   return (
     <div>
@@ -68,8 +119,10 @@ export default function LeadDetail() {
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-slate-400">{lead.lead_number}</span>
                 <StatusBadge status={lead.status} />
+                {lead.medicare_match_status === "matched" && <ProbabilityBadge snapshot={snap} testid="ld-probability" />}
               </div>
               <h1 className="font-display text-xl font-bold text-slate-900">{lead.org_name || `${lead.contact_first || ""} ${lead.contact_last || ""}`.trim() || "Lead"}</h1>
+              <p className="text-xs text-slate-400">{[snap.specialty || lead.specialty, [lead.city, lead.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -79,6 +132,14 @@ export default function LeadDetail() {
             {!lead.opportunity_id && <Btn onClick={() => setShowConvert(true)} data-testid="ld-convert"><Target className="h-4 w-4" /> Convert</Btn>}
             {lead.opportunity_id && <Btn variant="ghost" onClick={() => nav("/crm/opportunities")}><Link2 className="h-4 w-4" /> View opportunity</Btn>}
           </div>
+        </div>
+        {/* Sales action bar */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Btn data-testid="action-email" variant="ghost" onClick={() => setModal("email")}><Mail className="h-4 w-4" /> Email</Btn>
+          <Btn data-testid="action-call" variant="ghost" onClick={() => setModal("call")}><Phone className="h-4 w-4" /> Call</Btn>
+          <Btn data-testid="action-text" variant="ghost" onClick={() => setModal("text")}><MessageSquare className="h-4 w-4" /> Text</Btn>
+          <Btn data-testid="action-schedule" variant="ghost" onClick={() => nav("/crm/meetings")}><CalendarPlus className="h-4 w-4" /> Schedule</Btn>
+          <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
         </div>
       </header>
 
@@ -162,6 +223,38 @@ export default function LeadDetail() {
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-5">
+            <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><ShieldCheck className="h-4 w-4 text-primary" /> Communication Preferences</h2>
+            <div className="space-y-2 text-sm">
+              {[["do_not_call", "Do Not Call"], ["do_not_text", "Do Not Text"], ["email_suppressed", "Email Suppressed"], ["sms_consent", "SMS Consent"]].map(([k, lbl]) => (
+                <label key={k} className="flex items-center justify-between">
+                  <span className="text-slate-600">{lbl}</span>
+                  <input data-testid={`pref-${k}`} type="checkbox" checked={!!comm[k]} onChange={(e) => setPref({ [k]: e.target.checked })} className="h-4 w-4 accent-primary" />
+                </label>
+              ))}
+              <Field label="Preferred method">
+                <select data-testid="pref-method" value={comm.preferred_method || ""} onChange={(e) => setPref({ preferred_method: e.target.value })} className={inputCls}>
+                  <option value="">No preference</option><option value="email">Email</option><option value="phone">Phone</option><option value="sms">SMS</option>
+                </select>
+              </Field>
+            </div>
+          </section>
+
+          {lead.enrichment && Object.keys(lead.enrichment).length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><Sparkles className="h-4 w-4 text-primary" /> Professional & Social</h2>
+              <div className="space-y-2 text-sm">
+                {Object.entries(lead.enrichment).map(([k, v]) => (
+                  <div key={k} data-testid={`enr-${k}`} className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-[10px] uppercase text-slate-400">{k.replace(/_/g, " ")}</p>
+                    <p className="break-words font-semibold text-slate-700">{Array.isArray(v.value) ? v.value.join(", ") : String(v.value)}</p>
+                    <p className="text-[10px] text-slate-400">{v.source} · {v.confidence} confidence</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><History className="h-4 w-4 text-primary" /> Status History</h2>
             <ol className="space-y-2 text-sm">
               {(lead.status_history || []).slice().reverse().map((h, i) => (
@@ -179,6 +272,52 @@ export default function LeadDetail() {
         <Field label="Opportunity value ($)"><input data-testid="conv-value" type="number" value={conv.value} onChange={(e) => setConv({ ...conv, value: e.target.value })} className={inputCls} /></Field>
         <Field label="Starting stage"><select data-testid="conv-stage" value={conv.stage} onChange={(e) => setConv({ ...conv, stage: e.target.value })} className={inputCls}>{meta.opp_stages.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Btn onClick={convert} data-testid="conv-save" className="mt-2 w-full justify-center">Create Opportunity</Btn>
+      </Modal>
+
+      <Modal open={modal === "email"} onClose={() => setModal(null)} title="Send Email" wide>
+        <p className="mb-3 text-sm text-slate-500">To: <b>{lead.email || "no email on file"}</b></p>
+        <Field label="Subject"><input data-testid="email-subject" value={email.subject} onChange={(e) => setEmail({ ...email, subject: e.target.value })} className={inputCls} /></Field>
+        <Field label="Message"><textarea data-testid="email-body" rows={6} value={email.html} onChange={(e) => setEmail({ ...email, html: e.target.value })} className={inputCls} /></Field>
+        <Btn onClick={sendEmail} disabled={busy || !lead.email} data-testid="email-send" className="mt-1 w-full justify-center">{busy ? "Sending…" : "Send Email"}</Btn>
+      </Modal>
+
+      <Modal open={modal === "call"} onClose={() => setModal(null)} title="Log Call">
+        <Field label="Disposition">
+          <select data-testid="call-disposition" value={call.disposition} onChange={(e) => setCall({ ...call, disposition: e.target.value })} className={inputCls}>
+            {["Connected", "No Answer", "Left Voicemail", "Busy", "Wrong Number", "Interested", "Follow-Up", "Meeting Scheduled", "Not Interested", "Do Not Call"].map((d) => <option key={d}>{d}</option>)}
+          </select>
+        </Field>
+        <Field label="Notes"><textarea data-testid="call-notes" rows={3} value={call.notes} onChange={(e) => setCall({ ...call, notes: e.target.value })} className={inputCls} /></Field>
+        <Field label="Follow-up task (optional)"><input data-testid="call-followup" value={call.follow_up_task} onChange={(e) => setCall({ ...call, follow_up_task: e.target.value })} className={inputCls} /></Field>
+        <Btn onClick={logCall} disabled={busy} data-testid="call-save" className="mt-1 w-full justify-center">Save Call</Btn>
+      </Modal>
+
+      <Modal open={modal === "text"} onClose={() => setModal(null)} title="Send Text">
+        <p className="mb-3 text-sm text-slate-500">To: <b>{lead.phone || "no phone on file"}</b></p>
+        <Field label="Message"><textarea data-testid="text-body" rows={4} value={text} onChange={(e) => setText(e.target.value)} className={inputCls} /></Field>
+        <p className="mb-2 text-xs text-amber-600">SMS delivery activates when Twilio messaging is enabled; the message is logged to the timeline now.</p>
+        <Btn onClick={sendText} data-testid="text-send" className="w-full justify-center">Send</Btn>
+      </Modal>
+
+      <Modal open={modal === "enrich"} onClose={() => setModal(null)} title="✨ Enrich — Review Before Saving" wide>
+        {enrich.loading && <p className="py-6 text-center text-slate-400">Searching provider…</p>}
+        {enrich.result?.error && <p className="py-4 text-center text-red-600">{enrich.result.error}</p>}
+        {enrich.result && enrich.result.matched === false && <p className="py-4 text-center text-slate-500">No confident match found for this contact.</p>}
+        {enrich.result?.matched && (
+          <>
+            <p className="mb-3 text-sm text-slate-500">Confidence: <b className="text-slate-800">{enrich.result.confidence}</b>. Nothing is saved until you accept. Select the fields to apply.</p>
+            <div className="space-y-2">
+              {Object.entries(enrich.result.found || {}).filter(([, v]) => v && !(Array.isArray(v) && !v.length)).map(([k, v]) => (
+                <label key={k} data-testid={`enrich-field-${k}`} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
+                  <input type="checkbox" checked={!!enrich.picked[k]} onChange={(e) => setEnrich({ ...enrich, picked: { ...enrich.picked, [k]: e.target.checked } })} className="mt-1 h-4 w-4 accent-primary" />
+                  <span className="min-w-0"><span className="text-[10px] uppercase text-slate-400">{k.replace(/_/g, " ")}</span><span className="block break-words text-sm font-semibold text-slate-800">{Array.isArray(v) ? v.join(", ") : String(v)}</span></span>
+                  <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">NEW</span>
+                </label>
+              ))}
+            </div>
+            <Btn onClick={acceptEnrich} data-testid="enrich-accept" className="mt-3 w-full justify-center"><Check className="h-4 w-4" /> Accept Selected</Btn>
+          </>
+        )}
       </Modal>
     </div>
   );

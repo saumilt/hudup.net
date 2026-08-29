@@ -20,6 +20,9 @@ import CrmMeetings from "@/pages/crm/Meetings";
 import CrmAccounts from "@/pages/crm/Accounts";
 import CrmMedicare from "@/pages/crm/Medicare";
 import CrmUsers from "@/pages/crm/Users";
+import CrmPhysician from "@/pages/crm/PhysicianWorkspace";
+import CrmProviders from "@/pages/crm/Providers";
+import EventsHome from "@/pages/EventsHome";
 
 const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
 
@@ -29,9 +32,18 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Launcher />} />
+          <Route path="/home" element={<Launcher />} />
           <Route path="/login" element={<Login />} />
           <Route path="/kiosk" element={<Kiosk />} />
           <Route path="/wheel/:leadId" element={<Wheel />} />
+          <Route
+            path="/events"
+            element={
+              <ProtectedRoute roles={CRM_ROLES}>
+                <EventsHome />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={
@@ -75,10 +87,12 @@ function App() {
             <Route index element={<CrmDashboard />} />
             <Route path="leads" element={<CrmLeads />} />
             <Route path="leads/:id" element={<CrmLeadDetail />} />
+            <Route path="physicians/:npi" element={<CrmPhysician />} />
             <Route path="opportunities" element={<CrmOpportunities />} />
             <Route path="meetings" element={<CrmMeetings />} />
             <Route path="accounts" element={<CrmAccounts />} />
             <Route path="medicare" element={<CrmMedicare />} />
+            <Route path="providers" element={<ProtectedRoute adminOnly><CrmProviders /></ProtectedRoute>} />
             <Route path="users" element={<ProtectedRoute adminOnly><CrmUsers /></ProtectedRoute>} />
           </Route>
         </Routes>
