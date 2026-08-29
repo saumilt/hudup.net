@@ -34,6 +34,7 @@ import CrmTeams from "@/pages/crm/Teams";
 import CrmForecast from "@/pages/crm/Forecast";
 import CrmCampaigns from "@/pages/crm/Campaigns";
 import CaptureForm from "@/pages/CaptureForm";
+import SelfRegister from "@/pages/SelfRegister";
 import EventsHome from "@/pages/EventsHome";
 
 const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
@@ -48,6 +49,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/change-pin" element={<ProtectedRoute><ChangePin /></ProtectedRoute>} />
           <Route path="/c/:slug" element={<CaptureForm />} />
+          <Route path="/e/:eventId" element={<SelfRegister />} />
           <Route path="/kiosk" element={<Kiosk />} />
           <Route path="/wheel/:leadId" element={<Wheel />} />
           <Route

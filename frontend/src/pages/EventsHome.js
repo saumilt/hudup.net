@@ -2,17 +2,20 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { APP_VERSION } from "@/version";
-import { Activity, Radio, Gift, Users2, LayoutDashboard, ArrowRight, Grid3x3, ChevronDown, LayoutGrid } from "lucide-react";
+import { QrPosterModal } from "@/components/QrPoster";
+import { Activity, Radio, Gift, Users2, LayoutDashboard, ArrowRight, Grid3x3, ChevronDown, LayoutGrid, QrCode } from "lucide-react";
 
 export default function EventsHome() {
   const nav = useNavigate();
   const [events, setEvents] = useState(null);
   const [sw, setSw] = useState(false);
+  const [qrEvent, setQrEvent] = useState(null);
   useEffect(() => {
     localStorage.setItem("boothiq_ws", "events");
     api.get("/kiosk/events").then((r) => setEvents(r.data)).catch(() => setEvents([]));
   }, []);
   const openKiosk = (id) => { if (id) localStorage.setItem("boothiq_event_id", id); nav("/kiosk"); };
+  const selfRegUrl = (id) => `${window.location.origin}/e/${id}`;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -39,18 +42,31 @@ export default function EventsHome() {
           <Quick icon={Gift} label="Prize Wheel" onClick={() => openKiosk()} />
           <Quick icon={Users2} label="Booth Leads" onClick={() => nav("/leads")} />
         </div>
-        <h2 className="mb-3 font-display text-lg font-bold text-slate-900">Events</h2>
+        <h2 className="mb-1 font-display text-lg font-bold text-slate-900">Events</h2>
+        <p className="mb-3 text-sm text-slate-500">Print a <b>Scan-to-Check-In</b> QR poster for the table so walk-ups self-register from their own phone.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {(events || []).map((ev) => (
             <div key={ev.id} data-testid="event-card" className="rounded-xl border border-slate-200 bg-white p-5">
               <p className="font-display font-bold text-slate-900">{ev.name}</p>
-              <p className="text-xs text-slate-400">{ev.state || "—"}</p>
-              <button onClick={() => openKiosk(ev.id)} className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline">Open Event <ArrowRight className="h-3.5 w-3.5" /></button>
+              <p className="text-xs text-slate-400">{ev.convention_state || ev.state || "—"}</p>
+              <div className="mt-3 flex items-center gap-4">
+                <button onClick={() => openKiosk(ev.id)} className="inline-flex items-center gap-1 text-sm font-bold text-primary hover:underline">Open Event <ArrowRight className="h-3.5 w-3.5" /></button>
+                <button data-testid={`event-qr-${ev.id}`} onClick={() => setQrEvent(ev)} className="inline-flex items-center gap-1 text-sm font-bold text-slate-600 hover:text-primary hover:underline"><QrCode className="h-3.5 w-3.5" /> QR Poster</button>
+              </div>
             </div>
           ))}
           {events && events.length === 0 && <p className="text-sm text-slate-400">No events configured yet.</p>}
         </div>
       </div>
+
+      <QrPosterModal
+        open={!!qrEvent}
+        onClose={() => setQrEvent(null)}
+        url={qrEvent ? selfRegUrl(qrEvent.id) : null}
+        name={qrEvent?.name || "BoothIQ Event"}
+        subtitle="Scan to check in at our booth"
+        cta="Scan to check in & spin the wheel"
+      />
     </div>
   );
 }
