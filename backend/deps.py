@@ -83,8 +83,8 @@ async def require_admin(request: Request) -> dict:
 
 
 def require_roles(*allowed_roles):
-    """Return a dependency that allows any of the given roles (admin always allowed)."""
-    allowed = set(allowed_roles) | {"admin"}
+    """Return a dependency that allows any of the given roles (admin & super_admin always allowed)."""
+    allowed = set(allowed_roles) | {"admin", "super_admin"}
 
     async def _dep(request: Request) -> dict:
         user = await get_current_user(request)
