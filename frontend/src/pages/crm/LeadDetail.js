@@ -25,6 +25,7 @@ export default function LeadDetail() {
   const [text, setText] = useState("");
   const [enrich, setEnrich] = useState({ loading: false, result: null, picked: {} });
   const [busy, setBusy] = useState(false);
+  const [ai, setAi] = useState({ busy: false, prep: null, brief: null });
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -108,6 +109,26 @@ export default function LeadDetail() {
     try { await api.patch(`/crm/leads/${id}/preferences`, patch); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const aiDraftEmail = async () => {
+    setAi({ ...ai, busy: true });
+    try { const r = await api.post(`/crm/leads/${id}/ai/draft-email`, { goal: email.subject || undefined }); setEmail({ subject: r.data.subject, html: r.data.body }); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setAi((a) => ({ ...a, busy: false })); }
+  };
+  const aiDraftText = async () => {
+    setAi({ ...ai, busy: true });
+    try { const r = await api.post(`/crm/leads/${id}/ai/draft-text`, {}); setText(r.data.body); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setAi((a) => ({ ...a, busy: false })); }
+  };
+  const aiPrep = async () => {
+    setAi({ ...ai, busy: true, prep: null });
+    try { const r = await api.post(`/crm/leads/${id}/ai/prep-call`); setAi((a) => ({ ...a, busy: false, prep: r.data })); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); setAi((a) => ({ ...a, busy: false })); }
+  };
+  const aiResearch = async () => {
+    setModal("research"); setAi({ ...ai, busy: true, brief: null });
+    try { const r = await api.post(`/crm/leads/${id}/ai/research`); setAi((a) => ({ ...a, busy: false, brief: r.data.brief })); }
+    catch (e) { setAi((a) => ({ ...a, busy: false, brief: formatApiError(e.response?.data?.detail) })); }
+  };
 
   return (
     <div>
@@ -139,6 +160,7 @@ export default function LeadDetail() {
           <Btn data-testid="action-call" variant="ghost" onClick={() => setModal("call")}><Phone className="h-4 w-4" /> Call</Btn>
           <Btn data-testid="action-text" variant="ghost" onClick={() => setModal("text")}><MessageSquare className="h-4 w-4" /> Text</Btn>
           <Btn data-testid="action-schedule" variant="ghost" onClick={() => nav("/crm/meetings")}><CalendarPlus className="h-4 w-4" /> Schedule</Btn>
+          <Btn data-testid="action-research" variant="ghost" onClick={aiResearch}><Sparkles className="h-4 w-4" /> Research</Btn>
           <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
         </div>
       </header>
@@ -276,12 +298,22 @@ export default function LeadDetail() {
 
       <Modal open={modal === "email"} onClose={() => setModal(null)} title="Send Email" wide>
         <p className="mb-3 text-sm text-slate-500">To: <b>{lead.email || "no email on file"}</b></p>
+        <div className="mb-2"><Btn variant="dark" data-testid="email-ai-draft" onClick={aiDraftEmail} disabled={ai.busy}><Sparkles className="h-4 w-4" /> {ai.busy ? "Drafting…" : "AI Draft"}</Btn></div>
         <Field label="Subject"><input data-testid="email-subject" value={email.subject} onChange={(e) => setEmail({ ...email, subject: e.target.value })} className={inputCls} /></Field>
-        <Field label="Message"><textarea data-testid="email-body" rows={6} value={email.html} onChange={(e) => setEmail({ ...email, html: e.target.value })} className={inputCls} /></Field>
+        <Field label="Message"><textarea data-testid="email-body" rows={7} value={email.html} onChange={(e) => setEmail({ ...email, html: e.target.value })} className={inputCls} /></Field>
         <Btn onClick={sendEmail} disabled={busy || !lead.email} data-testid="email-send" className="mt-1 w-full justify-center">{busy ? "Sending…" : "Send Email"}</Btn>
       </Modal>
 
-      <Modal open={modal === "call"} onClose={() => setModal(null)} title="Log Call">
+      <Modal open={modal === "call"} onClose={() => setModal(null)} title="Log Call" wide>
+        <div className="mb-3"><Btn variant="dark" data-testid="call-ai-prep" onClick={aiPrep} disabled={ai.busy}><Sparkles className="h-4 w-4" /> {ai.busy ? "Preparing…" : "AI Prep Call"}</Btn></div>
+        {ai.prep && (
+          <div data-testid="call-prep" className="mb-3 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+            {ai.prep.overview && <p className="text-slate-700"><b>Overview:</b> {ai.prep.overview}</p>}
+            {ai.prep.talking_points?.length > 0 && <div><b className="text-slate-700">Talking points</b><ul className="ml-4 list-disc text-slate-600">{ai.prep.talking_points.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+            {ai.prep.questions?.length > 0 && <div><b className="text-slate-700">Questions</b><ul className="ml-4 list-disc text-slate-600">{ai.prep.questions.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+            {ai.prep.objections?.length > 0 && <div><b className="text-slate-700">Objections</b><ul className="ml-4 list-disc text-slate-600">{ai.prep.objections.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+          </div>
+        )}
         <Field label="Disposition">
           <select data-testid="call-disposition" value={call.disposition} onChange={(e) => setCall({ ...call, disposition: e.target.value })} className={inputCls}>
             {["Connected", "No Answer", "Left Voicemail", "Busy", "Wrong Number", "Interested", "Follow-Up", "Meeting Scheduled", "Not Interested", "Do Not Call"].map((d) => <option key={d}>{d}</option>)}
@@ -293,10 +325,16 @@ export default function LeadDetail() {
       </Modal>
 
       <Modal open={modal === "text"} onClose={() => setModal(null)} title="Send Text">
-        <p className="mb-3 text-sm text-slate-500">To: <b>{lead.phone || "no phone on file"}</b></p>
+        <p className="mb-2 text-sm text-slate-500">To: <b>{lead.phone || "no phone on file"}</b></p>
+        <div className="mb-2"><Btn variant="dark" data-testid="text-ai-draft" onClick={aiDraftText} disabled={ai.busy}><Sparkles className="h-4 w-4" /> {ai.busy ? "Drafting…" : "AI Draft"}</Btn></div>
         <Field label="Message"><textarea data-testid="text-body" rows={4} value={text} onChange={(e) => setText(e.target.value)} className={inputCls} /></Field>
         <p className="mb-2 text-xs text-amber-600">SMS delivery activates when Twilio messaging is enabled; the message is logged to the timeline now.</p>
         <Btn onClick={sendText} data-testid="text-send" className="w-full justify-center">Send</Btn>
+      </Modal>
+
+      <Modal open={modal === "research"} onClose={() => setModal(null)} title="✨ AI Practice Research" wide>
+        {ai.busy && <p className="py-6 text-center text-slate-400">Researching…</p>}
+        {!ai.busy && ai.brief && <div data-testid="research-brief" className="whitespace-pre-wrap text-sm text-slate-700">{ai.brief}</div>}
       </Modal>
 
       <Modal open={modal === "enrich"} onClose={() => setModal(null)} title="✨ Enrich — Review Before Saving" wide>

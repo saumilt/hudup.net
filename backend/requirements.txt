@@ -30,3 +30,5 @@ twilio>=9.0.0
 openpyxl>=3.1.0
 httpx==0.28.1
 resend==2.42.0
+emergentintegrations==0.2.0
+openpyxl==3.1.5

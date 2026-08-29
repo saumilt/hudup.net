@@ -15,6 +15,8 @@ from routes_medicare import router as medicare_router
 from routes_crm import router as crm_router
 from routes_crm_meetings import router as crm_meetings_router
 from routes_crm_engage import router as crm_engage_router, admin_router as providers_admin_router
+from routes_ai import router as ai_router
+from routes_import import router as import_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -49,6 +51,8 @@ app.include_router(crm_router)
 app.include_router(crm_meetings_router)
 app.include_router(crm_engage_router)
 app.include_router(providers_admin_router)
+app.include_router(ai_router)
+app.include_router(import_router)
 
 
 @app.websocket("/api/ws/{room}")

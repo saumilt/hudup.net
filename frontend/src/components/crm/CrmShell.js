@@ -6,7 +6,7 @@ import { APP_VERSION } from "@/version";
 import {
   LayoutDashboard, Users2, Target, CalendarClock, Building2, Search,
   Activity, LogOut, Settings2, UserCog, Radio, Plus, ChevronDown, Grid3x3,
-  UserPlus, CheckSquare, CalendarPlus, Stethoscope,
+  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload,
 } from "lucide-react";
 
 const ROLE_LABEL = {
@@ -127,6 +127,11 @@ export default function CrmShell() {
             </NavLink>
           ))}
           <div className="my-2 border-t border-slate-100" />
+          {(user?.role === "admin" || user?.role === "lead_manager") && (
+            <NavLink to="/crm/import" data-testid="nav-import" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+              <Upload className="h-4 w-4" /> Data Import
+            </NavLink>
+          )}
           {user?.role === "admin" && (
             <>
               <NavLink to="/crm/users" data-testid="nav-users" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>

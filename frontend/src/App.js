@@ -22,6 +22,7 @@ import CrmMedicare from "@/pages/crm/Medicare";
 import CrmUsers from "@/pages/crm/Users";
 import CrmPhysician from "@/pages/crm/PhysicianWorkspace";
 import CrmProviders from "@/pages/crm/Providers";
+import CrmImport from "@/pages/crm/ImportWizard";
 import EventsHome from "@/pages/EventsHome";
 
 const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
@@ -92,6 +93,7 @@ function App() {
             <Route path="meetings" element={<CrmMeetings />} />
             <Route path="accounts" element={<CrmAccounts />} />
             <Route path="medicare" element={<CrmMedicare />} />
+            <Route path="import" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmImport /></ProtectedRoute>} />
             <Route path="providers" element={<ProtectedRoute adminOnly><CrmProviders /></ProtectedRoute>} />
             <Route path="users" element={<ProtectedRoute adminOnly><CrmUsers /></ProtectedRoute>} />
           </Route>

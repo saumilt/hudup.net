@@ -39,6 +39,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v1.8 (2026-06) — Expansion Wave 1: AI Copilot + Bulk Import
+- **AI Copilot** (Emergent universal key, `ai.py` + `routes_ai.py`): on any lead — **AI Draft Email**, **AI Draft Text**, **AI Prep Call** (overview/talking points/questions/objections), **AI Research** brief (KNOWN vs AI-interpretation), and next-action suggestion. Uses privacy-safe internal CRM context (org, specialty, geography, Medicare tiers/figures, enrichment, recent activity). Every use logged to timeline.
+- **Bulk Import wizard** (`routes_import.py`, `/crm/import`): drag-and-drop CSV/TSV/XLSX/JSON → auto-parse → **AI-assisted column mapping** (with heuristic fallback) → **validate** (classify New / Existing[NPI or email] / Duplicate-in-file / Review) → **execute** (create leads, auto Medicare match by NPI, rule: Safe vs Refresh) → **rollback** (deletes created records + their activities). Rows staged in `import_jobs`; nothing written to production collections until execute; every execute is rollback-safe. Nav "Data Import" for admin + lead_manager.
+- Verified via curl (all import steps + AI endpoints returning real output) and UI screenshots. New deps: openpyxl. Version → v1.8.
+- **Wave 2 (next, Twilio)**: Two-Way SMS (outbound send + inbound replies to timeline) on the existing Twilio account; Browser Calling softphone + conference + auto-logging (needs Twilio Voice creds: API Key SID+Secret, TwiML App SID, a voice-capable number).
+
 ## v1.7 (2026-06) — Platform Expansion Phase 1 + Enrichment + Email
 - **Home redesign**: authenticated home is now a role-based **workspace selector** (BoothIQ Events vs BoothIQ CRM) with remembered last-workspace, positioning copy, and a workflow strip. `/home`, `/events` (Events command center) added.
 - **CRM shell**: top-left **workspace switcher**, **global search** (`/api/crm/search` across leads/opps/physicians), global **+Create**. Nav gains Providers (admin).
