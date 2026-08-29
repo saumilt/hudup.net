@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, inputCls } from "@/components/crm/kit";
-import { Upload, ArrowRight, CheckCircle2, RotateCcw, Sparkles } from "lucide-react";
+import { Upload, ArrowRight, CheckCircle2, RotateCcw, Sparkles, StickyNote } from "lucide-react";
 
 const STEPS = ["Upload", "Map Columns", "Review", "Done"];
 const FIELD_OPTS = ["", "org_name", "contact_first", "contact_last", "email", "phone", "npi", "specialty", "city", "state", "source", "tags", "notes"];
@@ -116,14 +116,20 @@ export default function ImportWizard() {
                 </div>
               ))}
             </div>
+            {valid.notes_columns?.length > 0 && (
+              <div data-testid="notes-columns-summary" className="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                <StickyNote className="h-4 w-4" /> {valid.notes_columns.length} column{valid.notes_columns.length > 1 ? "s" : ""} → notes: <span className="font-semibold">{valid.notes_columns.join(", ")}</span>
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-3">Class</th><th className="p-3">Org</th><th className="p-3">Contact</th><th className="p-3">NPI</th></tr></thead>
+              <table className="w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-3">Class</th><th className="p-3">Org</th><th className="p-3">Contact</th><th className="p-3">NPI</th><th className="p-3">Notes</th></tr></thead>
                 <tbody>{valid.preview.map((r, i) => (
                   <tr key={i} className="border-t border-slate-100">
                     <td className="p-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${CLS[r.class]}`}>{r.class.replace(/_/g, " ")}</span></td>
                     <td className="p-3 text-slate-700">{r.data.org_name || "—"}</td>
                     <td className="p-3 text-slate-600">{[r.data.contact_first, r.data.contact_last].filter(Boolean).join(" ") || "—"}</td>
                     <td className="p-3 font-mono text-xs text-slate-500">{r.data.npi || "—"}</td>
+                    <td className="p-3 text-slate-500" data-testid={`vpreview-notes-${i}`}>{r.notes ? `${r.notes} note${r.notes > 1 ? "s" : ""}` : "—"}</td>
                   </tr>
                 ))}</tbody>
               </table>

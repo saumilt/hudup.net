@@ -111,7 +111,8 @@ async def _rr_pool_pick(pool_key: str, member_ids: list[str]) -> str | None:
 async def _apply_assignment(lead: dict, am_id: str, team_id: str | None,
                             actor: dict | None, reason: str) -> str:
     am = await db.users.find_one({"id": am_id}, {"_id": 0, "name": 1})
-    patch = {"account_manager_id": am_id, "account_manager_name": (am or {}).get("name")}
+    patch = {"account_manager_id": am_id, "account_manager_name": (am or {}).get("name"),
+             "routing_reason": reason, "routed_at": now_iso()}
     if team_id:
         patch["team_id"] = team_id
     await db.crm_leads.update_one({"id": lead["id"]}, {"$set": patch})
@@ -197,6 +198,28 @@ async def route_unassigned(user=Depends(MANAGER)):
         if await auto_route_lead(lead, user, source_kind="bulk"):
             n += 1
     return {"ok": True, "routed": n}
+
+
+@router.get("/routing/balance")
+async def routing_balance(user=Depends(MANAGER)):
+    """How evenly this month's new leads are spreading across reps."""
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    users = await db.users.find({"role": {"$in": ["account_manager", "lead_manager"]}},
+                                {"_id": 0, "id": 1, "name": 1, "role": 1}).sort("name", 1).to_list(200)
+    reps, total = [], 0
+    for u in users:
+        c = await db.crm_leads.count_documents(
+            {"account_manager_id": u["id"], "created_at": {"$gte": month_start}})
+        reps.append({"user_id": u["id"], "name": u["name"], "role": u.get("role"), "leads": c})
+        total += c
+    unassigned = await db.crm_leads.count_documents(
+        {"created_at": {"$gte": month_start},
+         "$or": [{"account_manager_id": None}, {"account_manager_id": {"$exists": False}}]})
+    reps.sort(key=lambda r: r["leads"], reverse=True)
+    counts = [r["leads"] for r in reps]
+    spread = (max(counts) - min(counts)) if counts else 0
+    return {"month_total": total, "unassigned": unassigned, "reps": reps,
+            "spread": spread, "max": max(counts, default=0)}
 
 
 # ==================== QUOTAS ====================

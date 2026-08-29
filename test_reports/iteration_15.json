@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 15 — Notes Preview, Routing Trace, and Round-Robin Balance verified end-to-end. Backend pytest 8/8 passed (/app/backend/tests/test_iteration15_routing_ux.py). Web UI verified as lead_manager: (a) Import Wizard step 3 shows 'notes-columns-summary' banner ('2 columns → notes: DoctorNotes, Referral') and 'vpreview-notes-<i>' per row — row 0 '2 notes' (DoctorNotes+Referral), row 1 '1 note' (only Referral, empty DoctorNotes correctly dropped); (b) LeadDetail Ownership section renders 'ld-routing-reason' with 'Why assigned — Assigned to lead creator (no matching territory)' for a manual, unmatched lead; (c) Teams page renders 'rr-balance' panel with 6 'rr-row' entries, month_total (24 routed), and spread caption ('Spread of 19 lead(s) between the busiest and quietest rep.'). Regression confirmed: bulk import execute + rollback still work; quota-attainment table still renders (6 quota-row entries).",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_routing_ux.py",
+    "/app/test_reports/pytest/pytest_iter15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_import.validate — notes count reflects post-projection non-empty values only (blank cells are dropped in _project before push). Matches user expectation and passes on row 1 (DoctorNotes empty → count=1). Good.",
+    "routes_teams._apply_assignment persists routing_reason + routed_at atomically with account_manager_id and logs the reason via log_event — consistent audit trail. routes_crm.assign_lead mirrors this for manual assign (routing_reason='Manually assigned by <name>').",
+    "routes_teams.routing_balance groups by role in ('account_manager','lead_manager') and counts leads with created_at >= month_start where account_manager_id == user. Note: lead_manager users appear in the panel (e.g. 'Lead Manager · 2') — this is intentional per PRD (managers can be assignees) but ensure that's the desired UX; if the intent is 'reps only', filter to account_manager role. Currently the shared list is fine.",
+    "routes_teams.routing_balance — reps sorted desc by leads (verified in tests). spread = max-min across ALL reps including those with 0. If a manager has 0 leads while an AM has many, spread inflates — this is fine as an 'evenness' signal but could be documented in tooltip.",
+    "Teams.js — 'Lead Distribution' panel gates on `bal.reps.length === 0` (empty state) but shows the caption 'Evenly balanced across reps this month.' when spread===0 even if month_total===0. Cosmetic — for a fresh month with zero leads that copy is technically true. Consider a distinct empty-state.",
+    "LeadDetail.js — `ld-routing-reason` block appears only when `lead.routing_reason` is truthy. Old leads created before this iteration will silently omit it (no migration). If historical leads should also show something, backfill routing_reason for existing assigned leads. Not blocking.",
+    "ImportWizard.js — `notes-columns-summary` uses amber banner (bg-amber-50/text-amber-800) with good contrast; per-row count text is slate-500. Both readable.",
+    "routes_import.execute silently swallows auto_route_lead exceptions (unchanged from iter 14). Combined with the new routing_reason, if routing fails the lead will have no routing_reason at all — makes debugging easier now: a routed lead with missing reason is a signal of a partial write. Consider surfacing a warning in the execute response payload."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15_routing_ux.py",
+    "/app/test_reports/iteration_15.json",
+    "/app/test_reports/pytest/pytest_iter15.xml"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (3/3 UI surfaces — Import Review, LeadDetail Ownership, Teams RR Balance)"},
+  "test_credentials": "Used seeded leadmanager@boothiq.com / 639201 (lead_manager) from /app/memory/test_credentials.md. No new users created.",
+  "seed_data_creation": "Per-run created several TESTi15* test leads (manual/no-match, manual/assigned, RR reroute, balance-verification) — none auto-cleaned. Bulk-import regression rolls back its two created rows. Two UI-generated leads remain: 'TESTi15UI Detail *' (used to verify ld-routing-reason).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regression file: pytest /app/backend/tests/test_iteration15_routing_ux.py -v -o addopts= . API contract additions verified: /api/imports/{id}/validate now returns notes_columns (list[str]) and each preview row has notes:int; /api/crm/routing/balance returns {month_total,unassigned,reps:[{user_id,name,role,leads}],spread,max} with reps sorted desc; every routed lead has routing_reason + routed_at. UI testIDs: notes-columns-summary, vpreview-notes-<i>, ld-routing-reason (inside Ownership section of LeadDetail), rr-balance, rr-row (on /crm/teams). Bulk imports still call auto_route_lead with source_kind='bulk' and swallow exceptions — check backend logs if routing_reason ever appears missing on newly-imported leads. Test leftovers: TESTi15* leads persist and TESTi15UI Detail * lead remains for spot-checking the UI.",
+  "rca of the issue": "N/A — no functional bugs found. All three enhancements behave per spec."
+}

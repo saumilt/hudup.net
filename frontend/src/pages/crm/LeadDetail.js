@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -282,6 +282,12 @@ export default function LeadDetail() {
               <div><p className="text-xs uppercase text-slate-400">Created by</p>{lead.created_by_name}</div>
               <div><p className="text-xs uppercase text-slate-400">Created</p>{fmtDate(lead.created_at)}</div>
             </div>
+            {lead.routing_reason && (
+              <div data-testid="ld-routing-reason" className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400"><Shuffle className="h-3 w-3" /> Why assigned</p>
+                <p className="text-sm text-slate-600">{lead.routing_reason}</p>
+              </div>
+            )}
             {lead.tags?.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{lead.tags.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{t}</span>)}</div>}
           </section>
 

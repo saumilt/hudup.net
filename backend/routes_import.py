@@ -155,6 +155,7 @@ def _project(row: dict, mapping: dict) -> dict:
 async def validate(import_id: str, user=Depends(IMPORTER)):
     job = await _get_job(import_id)
     mapping = job["mapping"]
+    notes_columns = [src for src, f in mapping.items() if f == "notes"]
     seen_npi, seen_email = set(), set()
     classes = {"new": 0, "existing": 0, "duplicate_in_file": 0, "review": 0}
     preview = []
@@ -180,9 +181,10 @@ async def validate(import_id: str, user=Depends(IMPORTER)):
             seen_email.add(email)
         classes[cls] += 1
         if len(preview) < 8:
-            preview.append({"class": cls, "data": p})
+            preview.append({"class": cls, "data": p, "notes": len(p.get("_notes", []))})
     await db.import_jobs.update_one({"id": import_id}, {"$set": {"counts": classes, "status": "validated"}})
-    return {"counts": classes, "preview": preview, "total": job["row_count"]}
+    return {"counts": classes, "preview": preview, "total": job["row_count"],
+            "notes_columns": notes_columns}
 
 
 @router.post("/{import_id}/execute")

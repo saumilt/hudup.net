@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3 } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -21,16 +21,18 @@ export default function Teams() {
   const [teams, setTeams] = useState([]);
   const [terrs, setTerrs] = useState([]);
   const [att, setAtt] = useState([]);
+  const [bal, setBal] = useState(null);
   const [modal, setModal] = useState(null);
   const [team, setTeam] = useState({ name: "", member_ids: [] });
   const [terr, setTerr] = useState({ name: "", states: "", specialties: "", team_id: "" });
 
   const load = useCallback(async () => {
-    const [a, t, tr, q] = await Promise.all([
+    const [a, t, tr, q, b] = await Promise.all([
       api.get("/users?role=account_manager"), api.get("/crm/teams"),
       api.get("/crm/territories"), api.get("/crm/quotas/attainment"),
+      api.get("/crm/routing/balance"),
     ]);
-    setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data);
+    setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data); setBal(b.data);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -114,6 +116,30 @@ export default function Teams() {
             </table>
           </div>
         </div>
+        {bal && (
+          <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="rr-balance">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><BarChart3 className="h-4 w-4 text-primary" /> Lead Distribution (this month)</h2>
+              <span className="text-xs text-slate-400">{bal.month_total} routed{bal.unassigned ? ` · ${bal.unassigned} unassigned` : ""}</span>
+            </div>
+            {bal.reps.length === 0 ? <p className="text-sm text-slate-400">No reps yet.</p> : (
+              <div className="space-y-2">
+                {bal.reps.map((r) => {
+                  const pct = bal.month_total ? Math.round((r.leads / bal.month_total) * 100) : 0;
+                  const w = bal.max ? Math.round((r.leads / bal.max) * 100) : 0;
+                  return (
+                    <div key={r.user_id} data-testid="rr-row" className="flex items-center gap-3 text-sm">
+                      <span className="w-36 truncate font-semibold text-slate-700">{r.name}</span>
+                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-primary" style={{ width: `${w}%` }} /></div>
+                      <span className="w-20 text-right text-xs text-slate-500">{r.leads} · {pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="mt-3 text-xs text-slate-400">{bal.month_total === 0 ? "No leads assigned yet this month." : bal.spread === 0 ? "Evenly balanced across reps this month." : `Spread of ${bal.spread} lead(s) between the busiest and quietest rep.`}</p>
+          </div>
+        )}
       </div>
 
       <Modal open={modal === "team"} onClose={() => setModal(null)} title="New Team">

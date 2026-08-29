@@ -263,6 +263,9 @@ async def assign_lead(lead_id: str, data: AssignInput, user=Depends(MANAGER)):
     patch = {k: v for k, v in data.dict().items() if v is not None}
     if not patch:
         return {"ok": True}
+    if data.account_manager_id:
+        patch["routing_reason"] = f"Manually assigned by {user.get('name')}"
+        patch["routed_at"] = now_iso()
     r = await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})
     if r.matched_count == 0:
         raise HTTPException(404, "Lead not found")
