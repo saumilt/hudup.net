@@ -19,12 +19,13 @@ class EnrichmentError(Exception):
         super().__init__(message)
 
 
-async def _call(url: str, params: dict) -> dict:
+async def _call(url: str, params: dict, person: bool = True) -> dict:
     key = _key()
     if not key:
         raise EnrichmentError(503, "Enrichment provider not configured")
     clean = {k: v for k, v in params.items() if v}
-    clean.update(min_likelihood=6, include_if_matched="true", titlecase="true")
+    if person:
+        clean.update(min_likelihood=6, include_if_matched="true", titlecase="true")
     async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=6.0)) as client:
         try:
             r = await client.get(url, params=clean,
@@ -82,19 +83,17 @@ async def enrich_person(first_name=None, last_name=None, name=None, company=None
 
 async def enrich_company(name=None, website=None, city=None, region=None) -> dict:
     res = await _call(PDL_COMPANY, {"name": name, "website": website,
-                                    "locality": city, "region": region})
+                                    "locality": city, "region": region}, person=False)
     likelihood = res.get("likelihood")
-    return {
-        "likelihood": likelihood,
-        "confidence": confidence_band(likelihood),
-        "fields": {
-            "name": res.get("name"),
-            "website": res.get("website"),
-            "linkedin_url": res.get("linkedin_url"),
-            "industry": res.get("industry"),
-            "size": res.get("size"),
-            "employee_count": res.get("employee_count"),
-            "founded": res.get("founded"),
-            "location": (res.get("location") or {}).get("name"),
-        },
+    fields = {
+        "name": res.get("name"),
+        "website": res.get("website"),
+        "linkedin_url": res.get("linkedin_url"),
+        "industry": res.get("industry"),
+        "size": res.get("size"),
+        "employee_count": res.get("employee_count"),
+        "founded": res.get("founded"),
+        "location": (res.get("location") or {}).get("name"),
     }
+    fields = {k: (None if isinstance(v, bool) else v) for k, v in fields.items()}
+    return {"likelihood": likelihood, "confidence": confidence_band(likelihood), "fields": fields}

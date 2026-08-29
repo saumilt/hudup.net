@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge } from "@/components/crm/kit";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2 } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -97,6 +97,23 @@ export default function LeadDetail() {
       setEnrich({ loading: false, result: r.data, picked });
     } catch (e) { setEnrich({ loading: false, result: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
   };
+  const runCompanyEnrich = async () => {
+    setModal("company"); setEnrich({ loading: true, result: null, picked: {} });
+    try {
+      const r = await api.post(`/crm/leads/${id}/enrich-company`);
+      const picked = {};
+      Object.entries(r.data.found || {}).forEach(([k, v]) => { if (v) picked[k] = true; });
+      setEnrich({ loading: false, result: r.data, picked });
+    } catch (e) { setEnrich({ loading: false, result: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
+  };
+  const acceptCompany = async () => {
+    const fields = Object.keys(enrich.picked).filter((k) => enrich.picked[k]);
+    if (!fields.length) return toast.error("Select at least one field");
+    try {
+      await api.post(`/crm/leads/${id}/enrich-company/accept`, { job_id: enrich.result.job_id, fields });
+      toast.success("Practice data saved"); setModal(null); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const acceptEnrich = async () => {
     const fields = Object.keys(enrich.picked).filter((k) => enrich.picked[k]);
     if (!fields.length) return toast.error("Select at least one field");
@@ -162,6 +179,7 @@ export default function LeadDetail() {
           <Btn data-testid="action-schedule" variant="ghost" onClick={() => nav("/crm/meetings")}><CalendarPlus className="h-4 w-4" /> Schedule</Btn>
           <Btn data-testid="action-research" variant="ghost" onClick={aiResearch}><Sparkles className="h-4 w-4" /> Research</Btn>
           <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
+          <Btn data-testid="action-enrich-company" variant="dark" onClick={runCompanyEnrich}><Building2 className="h-4 w-4" /> Enrich Practice</Btn>
         </div>
       </header>
 
@@ -335,6 +353,26 @@ export default function LeadDetail() {
       <Modal open={modal === "research"} onClose={() => setModal(null)} title="✨ AI Practice Research" wide>
         {ai.busy && <p className="py-6 text-center text-slate-400">Researching…</p>}
         {!ai.busy && ai.brief && <div data-testid="research-brief" className="whitespace-pre-wrap text-sm text-slate-700">{ai.brief}</div>}
+      </Modal>
+
+      <Modal open={modal === "company"} onClose={() => setModal(null)} title="Enrich Practice — Review Before Saving" wide>
+        {enrich.loading && <p className="py-6 text-center text-slate-400">Searching provider…</p>}
+        {enrich.result?.error && <p className="py-4 text-center text-red-600">{enrich.result.error}</p>}
+        {enrich.result && enrich.result.matched === false && <p className="py-4 text-center text-slate-500">No confident practice match found.</p>}
+        {enrich.result?.matched && (
+          <>
+            <p className="mb-3 text-sm text-slate-500">Confidence: <b className="text-slate-800">{enrich.result.confidence}</b>. Select the practice fields to apply.</p>
+            <div className="space-y-2">
+              {Object.entries(enrich.result.found || {}).filter(([, v]) => v).map(([k, v]) => (
+                <label key={k} data-testid={`company-field-${k}`} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
+                  <input type="checkbox" checked={!!enrich.picked[k]} onChange={(e) => setEnrich({ ...enrich, picked: { ...enrich.picked, [k]: e.target.checked } })} className="mt-1 h-4 w-4 accent-primary" />
+                  <span className="min-w-0"><span className="text-[10px] uppercase text-slate-400">{k.replace(/_/g, " ")}</span><span className="block break-words text-sm font-semibold text-slate-800">{String(v)}</span></span>
+                </label>
+              ))}
+            </div>
+            <Btn onClick={acceptCompany} data-testid="company-accept" className="mt-3 w-full justify-center"><Check className="h-4 w-4" /> Accept Selected</Btn>
+          </>
+        )}
       </Modal>
 
       <Modal open={modal === "enrich"} onClose={() => setModal(null)} title="✨ Enrich — Review Before Saving" wide>

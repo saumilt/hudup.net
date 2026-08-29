@@ -39,6 +39,19 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v2.0 (2026-06) — Expansion Wave 3: Practice Enrich + Comms Inbox + Analytics
+- **Practice/Company Enrich** (PDL company API): lead action **Enrich Practice** → preview (name, website, LinkedIn company page, industry, size, employee count, founded, location) with accept-selected + provenance into `lead.practice`. `POST /api/crm/leads/{id}/enrich-company` (+ `/accept`).
+- **Unified Communications Inbox** (`/crm/communications`, `GET /api/crm/communications`): one feed of emails + SMS + calls with channel/direction, contact, lead status, "Needs response", role-scoped (AM sees own), tabs + counts; click → lead.
+- **Communication Analytics** (`/crm/analytics`, `GET /api/crm/analytics/communications`, manager-only): emails/SMS sent+received, calls + connection rate, call dispositions, meetings booked, opportunities, won, funnel ratios; 7/30/90-day range.
+- Verified via curl + UI screenshots. Version → v2.0.
+
+## FUTURE PHASES (backlog, prioritized)
+- **Wave 4 — Browser Calling** (Twilio Voice): softphone + conference + incoming match + recording/transcription. BLOCKED: needs Twilio Voice API Key SID+Secret, TwiML App SID, voice-capable number.
+- **Wave 5 — Mailbox OAuth** (Gmail / Microsoft 365 send+receive from rep's inbox). BLOCKED: needs Google/Microsoft OAuth app credentials.
+- **Wave 6 — Automation Rules** (WHEN/IF/THEN engine + admin builder), **Smart Call Lists** (calling queues with disposition auto-advance).
+- **Wave 7 — Intelligence**: Account Relationship Map, Data Explorer (visual DB navigation), data completeness & record-freshness scoring.
+- **Wave 8 — Autonomous AI Agent (recorded per user request)**: evolve the AI Copilot into an agent that proactively researches physicians/practices, drafts multichannel outreach, recommends and (with human approval) executes next actions, and drives sequences/automation — always with clear AI labeling and human-in-the-loop approval. To be built AFTER the current backlog (Waves 4–7) is complete.
+
 ## v1.9 (2026-06) — Expansion Wave 2: Two-Way SMS + Bulk Enrich + Sequences
 - **Two-Way SMS (live, Twilio)**: `/api/crm/leads/{id}/text` sends real SMS via the existing Twilio account (respects Do Not Text / opt-out), logs to timeline. Inbound webhook `POST /api/crm/twilio/sms-inbound` matches phone→lead, logs replies, honors STOP/START opt-out, and auto-pauses active sequence enrollments on a real reply. Messaging provider slot now reports configured. NOTE: set the Twilio number's inbound SMS webhook to `{APP_URL}/api/crm/twilio/sms-inbound`; outbound delivery still gated by A2P 10DLC (account-side).
 - **Bulk Enrich (PDL background job)**: `/api/crm/enrichment/bulk` enriches many selected leads in the background, **fill-missing-only** with provenance (HIGH-confidence only), never overwrites; `GET /api/crm/enrichment/{job_id}` for progress. Leads page: multi-select → **Bulk Enrich**.

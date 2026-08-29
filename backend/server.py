@@ -19,6 +19,7 @@ from routes_ai import router as ai_router
 from routes_import import router as import_router
 from routes_bulk import router as bulk_router
 from routes_sequences import router as sequences_router, sequence_worker
+from routes_comms import router as comms_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -57,6 +58,7 @@ app.include_router(ai_router)
 app.include_router(import_router)
 app.include_router(bulk_router)
 app.include_router(sequences_router)
+app.include_router(comms_router)
 
 
 @app.websocket("/api/ws/{room}")
