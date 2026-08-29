@@ -117,11 +117,11 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
     await fire_event("lead_created", doc, user)
     if doc.get("medicare_match_status") == "matched":
         await fire_event("medicare_matched", doc, user)
-    # Auto-route brand-new unassigned leads across the matching team (round-robin).
+    # Auto-route brand-new unassigned leads: territory match, else to the creator.
     if not data.account_manager_id:
         try:
             from routes_teams import auto_route_lead
-            am_id = await auto_route_lead(doc, user)
+            am_id = await auto_route_lead(doc, user, source_kind="manual")
             if am_id:
                 doc["account_manager_id"] = am_id
         except Exception:

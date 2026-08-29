@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from pymongo import ReturnDocument
 
 from deps import db, require_roles
 from crm_common import now_iso, log_event
@@ -85,33 +86,36 @@ async def delete_territory(terr_id: str, user=Depends(MANAGER)):
 
 
 
-# ==================== ROUND-ROBIN ROUTING ====================
-async def auto_route_lead(lead: dict, actor: dict | None = None) -> str | None:
-    """Match a lead to a territory (by state/specialty), then round-robin across
-    that team's members. Returns the assigned account_manager id, or None."""
-    state = (lead.get("state") or (lead.get("medicare_snapshot") or {}).get("state") or "").upper()
-    spec = (lead.get("specialty") or (lead.get("medicare_snapshot") or {}).get("specialty") or "").lower()
-    terrs = await db.territories.find({}, {"_id": 0}).to_list(200)
-    team_id = None
-    for t in terrs:
-        st_ok = (not t.get("states")) or state in t.get("states", [])
-        sp_ok = (not t.get("specialties")) or any(s.lower() in spec for s in t.get("specialties", []))
-        if st_ok and sp_ok and (t.get("states") or t.get("specialties")):
-            team_id = t["team_id"]
-            break
-    team = await db.teams.find_one({"id": team_id}) if team_id else await db.teams.find_one({})
-    if not team or not team.get("member_ids"):
+# ==================== ROUTING ====================
+async def _rr_team_pick(team: dict) -> str | None:
+    """Round-robin the next member of a team, advancing that team's cursor."""
+    members = team.get("member_ids") or []
+    if not members:
         return None
-    members = team["member_ids"]
     cur = team.get("rr_cursor", 0)
     am_id = members[cur % len(members)]
     await db.teams.update_one({"id": team["id"]}, {"$set": {"rr_cursor": cur + 1}})
+    return am_id
+
+
+async def _rr_pool_pick(pool_key: str, member_ids: list[str]) -> str | None:
+    """Round-robin across an ad-hoc pool using a shared counter (bulk fallback)."""
+    if not member_ids:
+        return None
+    doc = await db.counters.find_one_and_update(
+        {"_id": pool_key}, {"$inc": {"seq": 1}},
+        upsert=True, return_document=ReturnDocument.AFTER)
+    return member_ids[(doc["seq"] - 1) % len(member_ids)]
+
+
+async def _apply_assignment(lead: dict, am_id: str, team_id: str | None,
+                            actor: dict | None, reason: str) -> str:
     am = await db.users.find_one({"id": am_id}, {"_id": 0, "name": 1})
-    await db.crm_leads.update_one({"id": lead["id"]}, {"$set": {
-        "account_manager_id": am_id, "account_manager_name": (am or {}).get("name"),
-        "team_id": team["id"]}})
-    await log_event("lead", lead["id"], "routed", actor,
-                    f"Auto-routed to {(am or {}).get('name', 'rep')} ({team['name']})")
+    patch = {"account_manager_id": am_id, "account_manager_name": (am or {}).get("name")}
+    if team_id:
+        patch["team_id"] = team_id
+    await db.crm_leads.update_one({"id": lead["id"]}, {"$set": patch})
+    await log_event("lead", lead["id"], "routed", actor, reason)
     try:
         from routes_push import notify_lead_assigned
         await notify_lead_assigned(am_id, {**lead, "account_manager_id": am_id})
@@ -120,12 +124,64 @@ async def auto_route_lead(lead: dict, actor: dict | None = None) -> str | None:
     return am_id
 
 
+async def auto_route_lead(lead: dict, actor: dict | None = None,
+                          source_kind: str = "manual") -> str | None:
+    """Route a lead. First match a territory by state and/or specialty and round-robin
+    across that team. If nothing matches, fall back by origin: a manually-entered lead
+    goes to its creator; a bulk-imported (or manager-triggered) lead round-robins across
+    all account managers. Returns the assigned account_manager id, or None."""
+    state = (lead.get("state") or (lead.get("medicare_snapshot") or {}).get("state") or "").upper()
+    spec = (lead.get("specialty") or (lead.get("medicare_snapshot") or {}).get("specialty") or "").lower()
+
+    # 1) Territory match (state and/or specialty).
+    terrs = await db.territories.find({}, {"_id": 0}).to_list(200)
+    matched_team_id, matched_terr = None, None
+    for t in terrs:
+        if not (t.get("states") or t.get("specialties")):
+            continue
+        st_ok = (not t.get("states")) or state in t.get("states", [])
+        sp_ok = (not t.get("specialties")) or any(s and s.lower() in spec for s in t.get("specialties", []))
+        if st_ok and sp_ok:
+            matched_team_id, matched_terr = t["team_id"], t
+            break
+
+    if matched_team_id:
+        team = await db.teams.find_one({"id": matched_team_id})
+        am_id = await _rr_team_pick(team) if team else None
+        if am_id:
+            return await _apply_assignment(
+                lead, am_id, team["id"], actor,
+                f"Auto-routed to {team['name']} — territory “{matched_terr['name']}”")
+
+    # 2) No territory match → fallback by origin.
+    if source_kind == "manual":
+        creator_id = (actor or {}).get("id") or lead.get("created_by")
+        if creator_id:
+            return await _apply_assignment(
+                lead, creator_id, None, actor,
+                "Assigned to lead creator (no matching territory)")
+        return None
+
+    # Bulk / manager-triggered fallback → round-robin across all account managers.
+    ams = await db.users.find({"role": "account_manager"}, {"_id": 0, "id": 1}).sort("id", 1).to_list(500)
+    member_ids = [u["id"] for u in ams]
+    if not member_ids:
+        team = await db.teams.find_one({})
+        member_ids = (team or {}).get("member_ids") or []
+    am_id = await _rr_pool_pick("rr_bulk_fallback", member_ids)
+    if am_id:
+        return await _apply_assignment(
+            lead, am_id, None, actor,
+            "Auto-routed via round-robin (no matching territory)")
+    return None
+
+
 @router.post("/leads/{lead_id}/route")
 async def route_one(lead_id: str, user=Depends(MANAGER)):
     lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(404, "Lead not found")
-    am = await auto_route_lead(lead, user)
+    am = await auto_route_lead(lead, user, source_kind="bulk")
     if not am:
         raise HTTPException(400, "No team/members available to route to")
     return {"ok": True, "account_manager_id": am}
@@ -138,7 +194,7 @@ async def route_unassigned(user=Depends(MANAGER)):
         {"_id": 0}).to_list(1000)
     n = 0
     for lead in leads:
-        if await auto_route_lead(lead, user):
+        if await auto_route_lead(lead, user, source_kind="bulk"):
             n += 1
     return {"ok": True, "routed": n}
 

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/imports")
 IMPORTER = require_roles(ROLE_LEAD_MANAGER)
 
 LEAD_FIELDS = ["org_name", "contact_first", "contact_last", "email", "phone", "npi",
-               "specialty", "city", "state", "source", "tags"]
+               "specialty", "city", "state", "source", "tags", "notes"]
 MAX_ROWS = 5000
 
 
@@ -85,7 +85,7 @@ async def analyze(import_id: str, user=Depends(IMPORTER)):
     headers = job["headers"]
     sample = job["rows"][:3]
     sys = ("You map spreadsheet columns to a fixed CRM schema for physician/practice leads. "
-           f"Valid target fields: {', '.join(LEAD_FIELDS)}. Return STRICT JSON mapping each source "
+           f"Valid target fields: {', '.join(f for f in LEAD_FIELDS if f != 'notes')}. Return STRICT JSON mapping each source "
            'header to one target field or null, e.g. {"Provider NPI":"npi","Org":"org_name"}. '
            "Only map confident matches; use null otherwise.")
     prompt = f"Headers: {headers}\nSample rows: {json.dumps(sample)[:1500]}"
@@ -94,7 +94,7 @@ async def analyze(import_id: str, user=Depends(IMPORTER)):
         ai_map = parse_json(await generate(sys, prompt, want_json=True)) or {}
         for h in headers:
             f = ai_map.get(h)
-            mapping[h] = f if f in LEAD_FIELDS else None
+            mapping[h] = f if (f in LEAD_FIELDS and f != "notes") else None
     except Exception:
         mapping = {h: None for h in headers}
     # Heuristic fallback for anything unmapped.
@@ -132,9 +132,22 @@ async def save_mapping(import_id: str, data: MappingInput, user=Depends(IMPORTER
 
 def _project(row: dict, mapping: dict) -> dict:
     out = {}
+    notes = []
     for src, field in mapping.items():
-        if field and row.get(src) not in (None, ""):
-            out[field] = str(row.get(src)).strip()
+        if not field:
+            continue
+        val = row.get(src)
+        if val in (None, ""):
+            continue
+        val = str(val).strip()
+        if not val:
+            continue
+        if field == "notes":
+            notes.append({"label": src, "value": val})
+        else:
+            out[field] = val
+    if notes:
+        out["_notes"] = notes
     return out
 
 
@@ -214,6 +227,13 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
             snap = await _medicare_snapshot(npi, None)
             if snap:
                 match_status, matched_npi = "matched", npi
+        import_notes = []
+        for n in p.get("_notes", []):
+            import_notes.append({
+                "id": str(uuid.uuid4()), "text": f"{n['label']}: {n['value']}",
+                "author_id": user["id"], "author_name": user.get("name"),
+                "visibility": "team", "pinned": False, "created_at": now_iso(),
+                "edited_at": None, "edits": []})
         doc = {"id": lead_id, "lead_number": f"L-{num:05d}",
                "org_name": p.get("org_name"), "contact_first": p.get("contact_first"),
                "contact_last": p.get("contact_last"), "phone": p.get("phone"), "email": p.get("email"),
@@ -228,11 +248,17 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                "comm": dict(DEFAULT_COMM), "import_job_id": import_id,
                "created_by": user["id"], "created_by_name": user.get("name"),
                "created_at": now_iso(), "last_activity_at": now_iso(), "next_activity_at": None,
-               "notes": [], "activity": [],
+               "notes": import_notes, "activity": [],
                "status_history": [{"from": None, "to": "New", "by_id": user["id"],
                                    "by_name": user.get("name"), "reason": "Imported", "at": now_iso()}]}
         await db.crm_leads.insert_one(dict(doc))
         await log_activity(lead_id, activity("import", user, f"Imported from {job['filename']}"))
+        # Bulk-imported leads auto-route: territory match, else round-robin.
+        try:
+            from routes_teams import auto_route_lead
+            await auto_route_lead(doc, user, source_kind="bulk")
+        except Exception:
+            pass
         created_ids.append(lead_id)
         created += 1
     counts = {"created": created, "updated": updated, "skipped": skipped}

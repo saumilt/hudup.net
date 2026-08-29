@@ -6,7 +6,7 @@ import { Btn, inputCls } from "@/components/crm/kit";
 import { Upload, ArrowRight, CheckCircle2, RotateCcw, Sparkles } from "lucide-react";
 
 const STEPS = ["Upload", "Map Columns", "Review", "Done"];
-const FIELD_OPTS = ["", "org_name", "contact_first", "contact_last", "email", "phone", "npi", "specialty", "city", "state", "source", "tags"];
+const FIELD_OPTS = ["", "org_name", "contact_first", "contact_last", "email", "phone", "npi", "specialty", "city", "state", "source", "tags", "notes"];
 
 export default function ImportWizard() {
   const [step, setStep] = useState(0);
@@ -76,6 +76,7 @@ export default function ImportWizard() {
         {step === 1 && job && (
           <div className="max-w-3xl">
             <div className="mb-3 flex items-center gap-2 rounded-lg bg-primary/5 p-3 text-sm text-slate-600"><Sparkles className="h-4 w-4 text-primary" /> AI suggested a mapping for {job.row_count} rows. Adjust any column below.</div>
+            <div className="mb-3 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-500">Tip: map any extra columns to <span className="font-semibold text-slate-700">notes</span> — each becomes a note on the lead (<span className="font-mono">Column: value</span>). You can point multiple columns at notes.</div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="p-3">Source column</th><th className="p-3">Sample</th><th className="p-3">→ BoothIQ field</th></tr></thead>

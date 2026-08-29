@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 14 — Lead routing refinements (specialty/state + fallback) and bulk-import notes aggregation, verified end-to-end on backend (pytest, 7/7 passed) and web (Import Wizard). Backend test file: test_iteration14_routing_import_notes.py. Verified: (a) POST /api/crm/leads with no matching state/specialty → account_manager_id set to CREATOR (lead_manager Ankit/leadmanager); (b) POST /api/crm/leads matching territory (state=XA, specialty=Cardiology) → RR across the mapped team's two AM members (both members hit across 2 sequential creates); (c) POST /api/crm/leads/{id}/route on a no-match lead → falls back to RR across account_manager users; (d) POST /api/crm/leads/route-unassigned → 200 OK with {ok:true, routed:int}; (e) GET /api/crm/teams and /api/crm/territories list the newly created team+territory with states normalized to upper-case and specialties preserved; (f) Bulk import CSV → analyze exposes 'notes' in target_fields, /mapping accepts multiple columns mapped to 'notes', /validate counts new rows, /execute creates leads AND fires auto_route_lead with source_kind='bulk' — the matching row lands on a team member (team_id set), the non-matching row round-robins across account_managers. Notes aggregation confirmed on the created leads: each has TWO note entries with text formatted as 'DoctorNotes: <value>' and 'Referral: <value>'. WEB (/crm/import as lead_manager) — helper tip text 'Tip: map any extra columns to notes — each becomes a note on the lead (Column: value). You can point multiple columns at notes.' renders; every map-<header> dropdown includes 'notes' as an option; two extra columns (DoctorNotes, Referral) mapped simultaneously to notes; /validate shows 2 new; execute → 'Import complete 2 created · 0 updated · 0 skipped'; rollback works.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_routing_import_notes.py",
+    "/app/test_reports/pytest/pytest_iter14.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_teams.auto_route_lead — territory matching uses substring lookup on specialty (`s.lower() in spec`). A territory specialty of 'Cardiology' matches a lead specialty 'Interventional Cardiology' — correct for flexibility, but note it also matches 'Non-Cardiology' if such a value ever appeared. Acceptable for current data shapes.",
+    "routes_teams._rr_pool_pick uses a dedicated counter document 'rr_bulk_fallback' which is global across all bulk-fallback events — correct so pool RR is consistent across imports and route-unassigned. Note the counter never resets; long-term this is fine because modulo with member count re-anchors, but adding/removing account_manager users will effectively re-shuffle who gets the next lead.",
+    "routes_teams.auto_route_lead's manual fallback prefers actor.id over lead.created_by. That means a manager creating a lead on someone else's behalf will still be the assignee unless the lead already had a different created_by; this is the documented intent per the PRD change note.",
+    "routes_import._project — good: empty/whitespace values are dropped BEFORE being pushed to notes so blank cells don't produce empty 'Column: ' notes.",
+    "routes_import.execute — auto_route_lead is called AFTER insert with source_kind='bulk' inside a try/except that swallows all errors. If routing raises, the lead remains unassigned (recoverable via /leads/route-unassigned). Acceptable but consider logging so silent failures are visible.",
+    "routes_import.analyze — LEAD_FIELDS includes 'notes' (correct) but the AI system prompt intentionally excludes 'notes' from the AI-mappable set (`f for f in LEAD_FIELDS if f != 'notes'`), so notes is user-opt-in only. Good.",
+    "Import Wizard UI — the FIELD_OPTS list includes 'notes' at position 13; helper tip is visible above the mapping table; multiple columns can be set to 'notes' since the select is per-header. No client-side de-dupe needed because backend accepts many→notes.",
+    "Minor: /api/crm/leads/route-unassigned iterates and awaits sequentially — fine for expected volumes but O(n) round-trips. If ever needed, batching would help.",
+    "route_one uses source_kind='bulk' — so a manager clicking 'Route' on an unmatched lead RRs it instead of re-assigning to the actor. Matches the spec's 'manager-triggered' rule."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration14_routing_import_notes.py",
+    "/app/test_reports/iteration_14.json",
+    "/app/test_reports/pytest/pytest_iter14.xml"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (1/1 web flow — import wizard end-to-end)"},
+  "test_credentials": "Used seeded accounts leadmanager@boothiq.com/639201 and accountmanager@boothiq.com/528174 from /app/memory/test_credentials.md. Backend needs >=2 account_manager users in the org to prove RR; seeded env has multiple AMs. No new users created.",
+  "seed_data_creation": "Per test-run: one TEST_iter14_team_<ts> + one TEST_iter14_terr_<ts> (state=XA, specialty=Cardiology). Both are deleted in fixture teardown. Leads created during the test class remain (manual creations are not auto-cleaned) — TEST_iter14_manual_nomatch_*, TEST_iter14_manual_match_*, TEST_iter14_route1_*, TEST_iter14_bulk_* (bulk pair is rolled-back).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Regression file: pytest /app/backend/tests/test_iteration14_routing_import_notes.py -v -o addopts=. auto_route_lead signature is (lead, actor, source_kind='manual'|'bulk'). To prove RR you need >=2 account_manager users in the org — the fixture asserts this. Territory matching accepts partial specialty substring (case-insensitive) and exact-upper state. Bulk import UI testIDs: import-file, import-upload, map-<header>, import-rule, import-validate, vcount-{new|existing|duplicate_in_file|review}, import-execute, import-rollback. FIELD_OPTS in /app/frontend/src/pages/crm/ImportWizard.js exposes 'notes' as a mappable target and the wizard supports many-columns→notes. Backend /imports/{id}/execute silently swallows auto_route_lead exceptions; if routing appears to fail, check backend supervisor logs.",
+  "rca of the issue": "N/A — no functional bugs found. All refinements behave per spec."
+}
