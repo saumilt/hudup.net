@@ -24,7 +24,7 @@ PROVIDER_CATALOG = [
     {"slot": "mailbox_oauth", "label": "Mailbox Connect (Gmail / Outlook)",
      "vendor": "OAuth", "env_key": None, "kind": "send_receive", "cost_per_call": None},
     {"slot": "messaging", "label": "Two-Way SMS",
-     "vendor": "Twilio", "env_key": "TWILIO_MESSAGING_SERVICE_SID", "kind": "send_receive",
+     "vendor": "Twilio", "env_key": "TWILIO_ACCOUNT_SID", "kind": "send_receive",
      "cost_per_call": None},
     {"slot": "voice", "label": "Browser Calling & Conference",
      "vendor": "Twilio Voice", "env_key": "TWILIO_TWIML_APP_SID", "kind": "call",

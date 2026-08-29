@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { StatusBadge, PriorityTag, TierPill, Btn, Field, inputCls, EmptyState, Modal, fmtDate } from "@/components/crm/kit";
-import { Users2, Plus, UserCheck } from "lucide-react";
+import { Users2, Plus, UserCheck, Sparkles } from "lucide-react";
 
 export default function Leads() {
   const { user } = useAuth();
@@ -17,12 +17,15 @@ export default function Leads() {
   const [sel, setSel] = useState({});
   const [ams, setAms] = useState([]);
   const [assignTo, setAssignTo] = useState("");
+  const [enrollSeq, setEnrollSeq] = useState("");
+  const [seqs, setSeqs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [nl, setNl] = useState({ org_name: "", contact_first: "", contact_last: "", phone: "", email: "", source: "Manual Entry", priority: "Medium" });
 
   useEffect(() => {
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
     api.get("/users", { params: { role: "account_manager" } }).then((r) => setAms(r.data)).catch(() => {});
+    api.get("/crm/sequences").then((r) => setSeqs(r.data)).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -38,6 +41,24 @@ export default function Leads() {
     await api.post("/crm/leads/bulk-assign", { lead_ids: ids, account_manager_id: assignTo });
     toast.success(`Assigned ${ids.length} lead(s)`);
     setSel({}); load();
+  };
+  const bulkEnrich = async () => {
+    const ids = Object.keys(sel).filter((k) => sel[k]);
+    if (!ids.length) return toast.error("Select leads to enrich");
+    try {
+      const r = await api.post("/crm/enrichment/bulk", { lead_ids: ids });
+      toast.success(`Enriching ${r.data.total} lead(s) in the background — fills missing fields only`);
+      setSel({});
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const bulkEnroll = async () => {
+    const ids = Object.keys(sel).filter((k) => sel[k]);
+    if (!ids.length || !enrollSeq) return toast.error("Select leads and a sequence");
+    try {
+      const r = await api.post(`/crm/sequences/${enrollSeq}/enroll`, { lead_ids: ids });
+      toast.success(`Enrolled ${r.data.enrolled} lead(s)`);
+      setSel({}); setEnrollSeq("");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
   const create = async () => {
@@ -72,6 +93,14 @@ export default function Leads() {
               {ams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
             <Btn variant="ghost" onClick={bulkAssign} data-testid="bulk-assign-btn">Assign</Btn>
+            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <Btn variant="dark" onClick={bulkEnrich} data-testid="bulk-enrich-btn"><Sparkles className="h-4 w-4" /> Bulk Enrich</Btn>
+            <span className="mx-1 h-5 w-px bg-slate-200" />
+            <select data-testid="bulk-seq" value={enrollSeq} onChange={(e) => setEnrollSeq(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">Enroll in sequence…</option>
+              {seqs.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <Btn variant="ghost" onClick={bulkEnroll} data-testid="bulk-enroll-btn">Enroll</Btn>
           </div>
         )}
 

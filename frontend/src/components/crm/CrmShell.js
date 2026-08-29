@@ -6,7 +6,7 @@ import { APP_VERSION } from "@/version";
 import {
   LayoutDashboard, Users2, Target, CalendarClock, Building2, Search,
   Activity, LogOut, Settings2, UserCog, Radio, Plus, ChevronDown, Grid3x3,
-  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload,
+  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow,
 } from "lucide-react";
 
 const ROLE_LABEL = {
@@ -20,6 +20,7 @@ const NAV = [
   { to: "/crm/meetings", label: "Meetings & Tasks", icon: CalendarClock },
   { to: "/crm/accounts", label: "Accounts / Physicians", icon: Building2 },
   { to: "/crm/medicare", label: "Medicare Search", icon: Search },
+  { to: "/crm/sequences", label: "Sequences", icon: Workflow },
 ];
 
 function TopBar() {

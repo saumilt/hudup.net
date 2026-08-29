@@ -1,8 +1,10 @@
 """Phase 1 engagement layer: home command-center, global search, sales actions
 (email/call/text), one-click enrichment, consent preferences, provider admin."""
 import uuid
+import asyncio
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from deps import db, require_roles, require_admin, get_current_user
@@ -235,21 +237,67 @@ class TextInput(BaseModel):
 
 @router.post("/leads/{lead_id}/text")
 async def send_text(lead_id: str, data: TextInput, user=Depends(ANY_CRM)):
-    """SMS provider is a later phase. Records a planned/queued message so the
-    conversation is captured; actual send activates when Twilio messaging is enabled."""
+    """Send a real SMS via Twilio and log it to the timeline."""
     lead = await _get_lead(lead_id)
     comm = lead.get("comm") or DEFAULT_COMM
-    if comm.get("do_not_text"):
-        raise HTTPException(409, "This contact is marked Do Not Text")
-    ready = await is_slot_ready("messaging")
-    status = "sent" if ready else "queued_not_configured"
+    if comm.get("do_not_text") or comm.get("opt_out_at"):
+        raise HTTPException(409, "This contact is marked Do Not Text / has opted out")
+    to = lead.get("phone")
+    if not to:
+        raise HTTPException(400, "No mobile number on file")
+    from deps import send_sms
+    res = await asyncio.to_thread(send_sms, to, data.body)
+    status = res.get("status") or "failed"
+    delivered = status not in ("failed", "unconfigured")
     msg = {"id": str(uuid.uuid4()), "lead_id": lead_id, "channel": "sms",
-           "direction": "outbound", "to": lead.get("phone"), "body": data.body,
-           "status": status, "at": now_iso(), "by_id": user["id"], "by_name": user.get("name")}
+           "direction": "outbound", "to": to, "body": data.body,
+           "status": status, "provider_sid": res.get("sid"), "error": res.get("error"),
+           "at": now_iso(), "by_id": user["id"], "by_name": user.get("name")}
     await db.sms_messages.insert_one(dict(msg))
-    await log_event("lead", lead_id, "sms", user, f"SMS ({status}): {data.body[:60]}")
-    return {"ok": True, "status": status,
-            "note": None if ready else "SMS sending activates when Twilio messaging is enabled"}
+    await log_event("lead", lead_id, "sms", user, f"SMS sent: {data.body[:60]}",
+                    meta={"status": status, "sid": res.get("sid")})
+    note = None
+    if status == "unconfigured":
+        note = "Twilio is not configured"
+    elif not delivered:
+        note = f"Carrier rejected the message ({res.get('error') or status}). Check A2P 10DLC registration."
+    return {"ok": delivered, "status": status, "note": note}
+
+
+# ==================== TWILIO INBOUND SMS WEBHOOK ====================
+@router.post("/twilio/sms-inbound", include_in_schema=False)
+async def twilio_sms_inbound(request: Request):
+    """Twilio posts inbound SMS here (form-encoded). Match phone -> lead, log to
+    timeline, and honor STOP/START opt-out keywords."""
+    form = await request.form()
+    from_num = (form.get("From") or "").strip()
+    body = (form.get("Body") or "").strip()
+    sid = form.get("MessageSid")
+    digits = "".join(ch for ch in from_num if ch.isdigit())[-10:]
+    lead = None
+    if digits:
+        lead = await db.crm_leads.find_one({"phone": {"$regex": digits + "$"}}, {"_id": 0, "id": 1})
+    lead_id = lead["id"] if lead else None
+    keyword = body.strip().upper()
+    if lead_id and keyword in ("STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"):
+        await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+            "comm.do_not_text": True, "comm.opt_out_at": now_iso()}})
+    elif lead_id and keyword in ("START", "YES", "UNSTOP"):
+        await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+            "comm.do_not_text": False, "comm.sms_consent": True,
+            "comm.sms_consent_source": "SMS START", "comm.sms_consent_at": now_iso(),
+            "comm.opt_out_at": None}})
+    await db.sms_messages.insert_one({"id": str(uuid.uuid4()), "lead_id": lead_id, "channel": "sms",
+        "direction": "inbound", "from": from_num, "body": body, "status": "received",
+        "provider_sid": sid, "at": now_iso()})
+    if lead_id:
+        await log_event("lead", lead_id, "sms_in", None, f"SMS received: {body[:80]}",
+                        meta={"from": from_num})
+        # Auto-pause any active sequence enrollment on a real reply.
+        await db.sequence_enrollments.update_many(
+            {"lead_id": lead_id, "status": "active"},
+            {"$set": {"status": "paused", "paused_reason": "physician replied (SMS)"}})
+    return Response(content="<Response></Response>", media_type="application/xml")
 
 
 # ==================== CONSENT / PREFERENCES ====================

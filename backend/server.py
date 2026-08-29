@@ -17,6 +17,8 @@ from routes_crm_meetings import router as crm_meetings_router
 from routes_crm_engage import router as crm_engage_router, admin_router as providers_admin_router
 from routes_ai import router as ai_router
 from routes_import import router as import_router
+from routes_bulk import router as bulk_router
+from routes_sequences import router as sequences_router, sequence_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -53,6 +55,8 @@ app.include_router(crm_engage_router)
 app.include_router(providers_admin_router)
 app.include_router(ai_router)
 app.include_router(import_router)
+app.include_router(bulk_router)
+app.include_router(sequences_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -187,6 +191,10 @@ async def startup():
             "created_at": datetime.now(timezone.utc).isoformat()})
 
     logger.info("BoothIQ startup complete")
+
+    # Background worker: advance due sequence steps.
+    import asyncio as _asyncio
+    _asyncio.create_task(sequence_worker())
 
     # Initialize object storage for chunked CSV upload staging (best-effort).
     try:
