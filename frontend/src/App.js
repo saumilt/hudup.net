@@ -5,6 +5,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 import Launcher from "@/pages/Launcher";
 import Login from "@/pages/Login";
+import ChangePin from "@/pages/ChangePin";
 import Kiosk from "@/pages/Kiosk";
 import Wheel from "@/pages/Wheel";
 import Dashboard from "@/pages/Dashboard";
@@ -45,6 +46,7 @@ function App() {
           <Route path="/" element={<Launcher />} />
           <Route path="/home" element={<Launcher />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/change-pin" element={<ProtectedRoute><ChangePin /></ProtectedRoute>} />
           <Route path="/c/:slug" element={<CaptureForm />} />
           <Route path="/kiosk" element={<Kiosk />} />
           <Route path="/wheel/:leadId" element={<Wheel />} />

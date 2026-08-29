@@ -27,8 +27,8 @@ export default function Login() {
     }
     setBusy(true);
     try {
-      await login(email, pin);
-      router.replace("/(tabs)");
+      const u = await login(email, pin);
+      router.replace(u.must_change_pin ? "/change-pin" : "/(tabs)");
     } catch (e) {
       setError(errText(e));
     } finally {

@@ -262,6 +262,13 @@ async def assign_lead(lead_id: str, data: AssignInput, user=Depends(MANAGER)):
         u = await db.users.find_one({"id": v}, {"_id": 0, "name": 1})
         names.append(f"{'Account Manager' if 'account' in k else 'Lead Manager'}: {u['name'] if u else v}")
     await log_activity(lead_id, activity("assigned", user, "Assigned — " + ", ".join(names)))
+    if data.account_manager_id:
+        try:
+            from routes_push import notify_lead_assigned
+            lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "activity": 0})
+            await notify_lead_assigned(data.account_manager_id, lead or {"id": lead_id})
+        except Exception:
+            pass
     return {"ok": True}
 
 

@@ -13,7 +13,7 @@ export default function Index() {
       </View>
     );
   }
-  return <Redirect href={user ? "/(tabs)" : "/login"} />;
+  return <Redirect href={user ? (user.must_change_pin ? "/change-pin" : "/(tabs)") : "/login"} />;
 }
 
 const styles = StyleSheet.create({

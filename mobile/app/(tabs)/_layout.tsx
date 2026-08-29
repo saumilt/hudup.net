@@ -16,6 +16,7 @@ export default function TabsLayout() {
     );
   }
   if (!user) return <Redirect href="/login" />;
+  if (user.must_change_pin) return <Redirect href="/change-pin" />;
 
   return (
     <Tabs

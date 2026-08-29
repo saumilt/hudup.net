@@ -1,10 +1,13 @@
 """Admin user management: create/list/update users and assign CRM roles."""
+import os
 import uuid
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from deps import db, require_admin, hash_pin, get_current_user
 from crm_common import ALL_ROLES, ROLE_LABELS, now_iso
+from emailer import send_email, EmailError
 
 router = APIRouter(prefix="/api/users")
 
@@ -13,8 +16,50 @@ def _public(u: dict) -> dict:
     return {
         "id": u["id"], "email": u["email"], "name": u["name"], "role": u["role"],
         "title": u.get("title"), "active": u.get("active", True),
+        "must_change_pin": u.get("must_change_pin", False),
         "created_at": u.get("created_at"),
     }
+
+
+def _gen_temp_pin() -> str:
+    return "".join(secrets.choice("0123456789") for _ in range(6))
+
+
+def _login_url() -> str:
+    return (os.environ.get("APP_URL", "").rstrip("/") or "") + "/login"
+
+
+async def _send_invite(name: str, email: str, pin: str, role: str) -> bool:
+    """Email a temporary PIN to a new team member. Returns True if sent."""
+    role_label = ROLE_LABELS.get(role, role)
+    url = _login_url()
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#0F172A">
+      <div style="background:#047857;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
+        <h2 style="margin:0;font-size:20px">Welcome to BoothIQ</h2>
+      </div>
+      <div style="border:1px solid #E2E8F0;border-top:none;padding:24px;border-radius:0 0 12px 12px">
+        <p>Hi {name or 'there'},</p>
+        <p>An account has been created for you on <b>BoothIQ</b> as a <b>{role_label}</b>.</p>
+        <p>Sign in with your email and this temporary PIN:</p>
+        <div style="text-align:center;margin:20px 0">
+          <span style="display:inline-block;background:#ECFDF5;color:#065F46;font-size:28px;
+            letter-spacing:6px;font-weight:800;padding:14px 28px;border-radius:12px">{pin}</span>
+        </div>
+        <p style="font-size:14px;color:#334155">Email: <b>{email}</b><br/>
+        You'll be asked to choose a new PIN the first time you sign in.</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="{url}" style="background:#047857;color:#fff;text-decoration:none;
+            padding:12px 28px;border-radius:999px;font-weight:700">Sign in to BoothIQ</a>
+        </p>
+        <p style="font-size:12px;color:#94A3B8">If you weren't expecting this, you can ignore this email.</p>
+      </div>
+    </div>"""
+    try:
+        await send_email(email, "Your BoothIQ account — temporary PIN", html)
+        return True
+    except EmailError:
+        return False
 
 
 @router.get("")
@@ -27,6 +72,7 @@ async def list_users(request: Request, role: str | None = None):
     users = await db.users.find(q, {"_id": 0, "pin_hash": 0}).sort("name", 1).to_list(500)
     for u in users:
         u.setdefault("active", True)
+        u.setdefault("must_change_pin", False)
     return users
 
 
@@ -37,28 +83,54 @@ async def roles():
 
 class CreateUserInput(BaseModel):
     email: str
-    pin: str
+    pin: str | None = None
     name: str
     role: str
     title: str | None = None
+    send_invite: bool = True
 
 
 @router.post("")
 async def create_user(data: CreateUserInput, admin=Depends(require_admin)):
     if data.role not in ALL_ROLES:
         raise HTTPException(400, "Invalid role")
-    if not (data.pin and data.pin.isdigit() and 4 <= len(data.pin) <= 8):
-        raise HTTPException(400, "PIN must be 4-8 digits")
     email = data.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(400, "A user with that email already exists")
+    # A supplied PIN is used as-is; otherwise generate a secure temporary PIN
+    # and force a change on first login.
+    temp = data.pin is None or data.pin == ""
+    pin = data.pin if not temp else _gen_temp_pin()
+    if not (pin and pin.isdigit() and 4 <= len(pin) <= 8):
+        raise HTTPException(400, "PIN must be 4-8 digits")
     doc = {
-        "id": str(uuid.uuid4()), "email": email, "pin_hash": hash_pin(data.pin),
+        "id": str(uuid.uuid4()), "email": email, "pin_hash": hash_pin(pin),
         "name": data.name.strip(), "role": data.role, "title": data.title,
-        "active": True, "created_at": now_iso(),
+        "active": True, "must_change_pin": temp, "created_at": now_iso(),
     }
     await db.users.insert_one(dict(doc))
-    return _public(doc)
+    invite_sent = False
+    if temp and data.send_invite:
+        invite_sent = await _send_invite(doc["name"], email, pin, data.role)
+    out = _public(doc)
+    # Surface the temp PIN to the admin so they can share it if email is off.
+    if temp:
+        out["temp_pin"] = pin
+        out["invite_sent"] = invite_sent
+    return out
+
+
+@router.post("/{user_id}/invite")
+async def resend_invite(user_id: str, admin=Depends(require_admin)):
+    """Regenerate a temporary PIN, force a change on next login, and email it."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(404, "User not found")
+    pin = _gen_temp_pin()
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "pin_hash": hash_pin(pin), "must_change_pin": True}})
+    invite_sent = await _send_invite(user.get("name"), user["email"], pin, user.get("role"))
+    return {"ok": True, "invite_sent": invite_sent, "temp_pin": pin}
 
 
 class UpdateUserInput(BaseModel):
@@ -90,7 +162,8 @@ class ResetPinInput(BaseModel):
 async def reset_pin(user_id: str, data: ResetPinInput, admin=Depends(require_admin)):
     if not (data.pin and data.pin.isdigit() and 4 <= len(data.pin) <= 8):
         raise HTTPException(400, "PIN must be 4-8 digits")
-    r = await db.users.update_one({"id": user_id}, {"$set": {"pin_hash": hash_pin(data.pin)}})
+    r = await db.users.update_one({"id": user_id}, {"$set": {
+        "pin_hash": hash_pin(data.pin), "must_change_pin": False}})
     if r.matched_count == 0:
         raise HTTPException(404, "User not found")
     return {"ok": True}

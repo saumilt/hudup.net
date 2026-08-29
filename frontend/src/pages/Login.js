@@ -19,9 +19,9 @@ export default function Login() {
     try {
       const user = await login(email, pin);
       toast.success(`Welcome, ${user.name}`);
-      const home = user.role === "admin" ? "/crm"
-        : user.role === "lead_manager" || user.role === "account_manager" ? "/crm"
-        : "/dashboard";
+      const home = user.must_change_pin ? "/change-pin"
+        : user.role === "staff" ? "/dashboard"
+        : "/home";
       nav(home);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Login failed");

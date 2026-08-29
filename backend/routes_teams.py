@@ -112,6 +112,11 @@ async def auto_route_lead(lead: dict, actor: dict | None = None) -> str | None:
         "team_id": team["id"]}})
     await log_event("lead", lead["id"], "routed", actor,
                     f"Auto-routed to {(am or {}).get('name', 'rep')} ({team['name']})")
+    try:
+        from routes_push import notify_lead_assigned
+        await notify_lead_assigned(am_id, {**lead, "account_manager_id": am_id})
+    except Exception:
+        pass
     return am_id
 
 

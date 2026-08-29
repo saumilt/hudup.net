@@ -25,6 +25,7 @@ from routes_agent import router as agent_router
 from routes_teams import router as teams_router
 from routes_forecast import router as forecast_router
 from routes_campaigns import router as campaigns_router, public_router as campaigns_public_router
+from routes_push import router as push_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -70,6 +71,7 @@ app.include_router(teams_router)
 app.include_router(forecast_router)
 app.include_router(campaigns_router)
 app.include_router(campaigns_public_router)
+app.include_router(push_router)
 
 
 @app.websocket("/api/ws/{room}")

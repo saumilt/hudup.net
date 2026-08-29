@@ -3,8 +3,9 @@ import { api, formatApiError } from "@/lib/api";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, StatCard, EmptyState, money, fmtDay } from "@/components/crm/kit";
 import { toast } from "sonner";
+import { QRCodeCanvas } from "qrcode.react";
 import {
-  Megaphone, Plus, Link2, Copy, ExternalLink, Trash2, Target, Users2, TrendingUp, DollarSign,
+  Megaphone, Plus, Link2, Copy, ExternalLink, Trash2, Target, Users2, TrendingUp, DollarSign, QrCode,
 } from "lucide-react";
 
 const CHANNEL_COLOR = {
@@ -124,9 +125,55 @@ function CampaignForm({ meta, initial, onSave, saving }) {
   );
 }
 
+function QRPoster({ url, name, onClose }) {
+  const ref = React.useRef(null);
+  const getCanvas = () => ref.current?.querySelector("canvas");
+  const download = () => {
+    const c = getCanvas();
+    if (!c) return;
+    const a = document.createElement("a");
+    a.href = c.toDataURL("image/png");
+    a.download = `${name.replace(/[^a-z0-9]+/gi, "-")}-qr.png`;
+    a.click();
+  };
+  const printPoster = () => {
+    const c = getCanvas();
+    if (!c) return;
+    const data = c.toDataURL("image/png");
+    const w = window.open("", "_blank", "width=800,height=1000");
+    if (!w) return toast.error("Enable pop-ups to print the poster");
+    w.document.write(`<!doctype html><html><head><title>${name} — QR Poster</title>
+      <style>body{font-family:'Plus Jakarta Sans',Arial,sans-serif;text-align:center;padding:64px 40px;color:#0F172A}
+      .ey{letter-spacing:.25em;text-transform:uppercase;color:#047857;font-weight:800;font-size:14px}
+      h1{font-size:42px;margin:12px 0 4px}p.sub{font-size:22px;color:#334155;margin:0 0 32px}
+      img{width:380px;height:380px}p.cta{font-size:26px;font-weight:800;color:#047857;margin-top:28px}
+      p.ft{color:#94a3b8;margin-top:40px;font-size:13px}</style></head>
+      <body><div class="ey">BoothIQ</div><h1>${name}</h1>
+      <p class="sub">Interested? Scan to connect with our team.</p>
+      <img src="${data}"/><p class="cta">📱 Scan to connect</p>
+      <p class="ft">${url}</p></body></html>`);
+    w.document.close(); w.focus();
+    setTimeout(() => w.print(), 300);
+  };
+  return (
+    <div className="text-center">
+      <div ref={ref} className="mx-auto mb-4 inline-flex rounded-2xl border border-slate-200 bg-white p-5">
+        <QRCodeCanvas value={url} size={240} fgColor="#0F172A" level="M" includeMargin data-testid="campaign-qr-canvas" />
+      </div>
+      <p className="font-display text-lg font-bold text-slate-900">{name}</p>
+      <p className="mb-4 text-sm text-slate-500">Scan to open the capture form</p>
+      <div className="flex justify-center gap-2">
+        <Btn data-testid="qr-download" variant="ghost" onClick={download}><Copy className="h-4 w-4" /> Download PNG</Btn>
+        <Btn data-testid="qr-print" onClick={printPoster}><QrCode className="h-4 w-4" /> Print Poster</Btn>
+      </div>
+    </div>
+  );
+}
+
 function CampaignDetail({ campaign, onClose, onChanged }) {
   const [c, setC] = React.useState(campaign);
   const [busy, setBusy] = React.useState(false);
+  const [showQR, setShowQR] = React.useState(false);
   const s = c.stats || {};
   const slug = c.capture?.slug;
   const url = slug ? captureUrl(slug) : null;
@@ -157,9 +204,14 @@ function CampaignDetail({ campaign, onClose, onChanged }) {
             <input readOnly data-testid="capture-link" className={`${inputCls} bg-white`} value={url} />
             <Btn data-testid="copy-link" variant="ghost" onClick={copy}><Copy className="h-4 w-4" /></Btn>
             <a href={url} target="_blank" rel="noreferrer"><Btn variant="ghost"><ExternalLink className="h-4 w-4" /></Btn></a>
+            <Btn data-testid="open-qr-poster" onClick={() => setShowQR(true)}><QrCode className="h-4 w-4" /> QR Poster</Btn>
           </div>
         </div>
       )}
+
+      <Modal open={showQR} onClose={() => setShowQR(false)} title="Capture Form QR Poster">
+        {url && <QRPoster url={url} name={c.name} onClose={() => setShowQR(false)} />}
+      </Modal>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Set status:</span>

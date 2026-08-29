@@ -27,12 +27,22 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const refreshUser = async () => {
+    try {
+      const r = await api.get("/auth/me");
+      setUser(r.data);
+      return r.data;
+    } catch {
+      return null;
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem("boothiq_token");
     setUser(false);
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, logout, refreshUser }}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);
