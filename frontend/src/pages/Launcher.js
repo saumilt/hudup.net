@@ -47,6 +47,21 @@ const WORKFLOW = [
   ["Outreach", "Email · Call · Text"], ["Opportunities", "Grow"],
 ];
 
+const HERO_IMG = "https://images.unsplash.com/photo-1666886573531-48d2e3c2b684?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwzfHxkb2N0b3IlMjB1c2luZyUyMHRhYmxldHxlbnwwfHx8fDE3ODgwMjU5NjB8MA&ixlib=rb-4.1.0&q=85";
+const EVENTS_IMG = "https://images.unsplash.com/photo-1760001551764-14eddf965019?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwzfHxjb25mZXJlbmNlJTIwZXhoaWJpdGlvbiUyMGhhbGx8ZW58MHx8fHwxNzg4MDI1OTYwfDA&ixlib=rb-4.1.0&q=85";
+const CRM_IMG = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwzfHxidXNpbmVzcyUyMGFuYWx5dGljcyUyMGRhc2hib2FyZHxlbnwwfHx8fDE3ODgwMjU5NjB8MA&ixlib=rb-4.1.0&q=85";
+
+const FEATURES = [
+  { icon: Stethoscope, title: "Real-time Medicare scoring", desc: "Score physicians against CMS Part D data the instant they walk up to the booth." },
+  { icon: Gift, title: "Prize-wheel capture", desc: "A doctor-facing kiosk and prize wheel that turn booth traffic into qualified leads." },
+  { icon: Sparkles, title: "AI Copilot & research", desc: "Draft emails, prep calls and research practices with an AI copilot and autonomous agent." },
+  { icon: Search, title: "Data enrichment", desc: "Enrich physicians and practices with professional, practice and contact intelligence." },
+  { icon: Inbox, title: "Multi-channel outreach", desc: "Two-way SMS and email with sequences, automation rules and a unified inbox." },
+  { icon: Megaphone, title: "Marketing campaigns", desc: "Public capture forms, printable QR posters and full source attribution into the pipeline." },
+  { icon: TrendingUp, title: "Teams & forecasting", desc: "Territories, auto lead-routing and sales forecasting across your whole team." },
+  { icon: PhoneCall, title: "Mobile rep app", desc: "Work My Day, leads, calls and follow-ups right from your phone." },
+];
+
 export default function Launcher() {
   const nav = useNavigate();
   const { user, logout } = useAuth();
@@ -92,31 +107,47 @@ export default function Launcher() {
       </header>
 
       <main className="relative z-10 mx-auto max-w-6xl px-6 py-12">
-        <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-primary">Physician Engagement &amp; Intelligence Platform</p>
-        <h1 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-          Physician Intelligence.<br className="hidden sm:block" /> Engagement. Growth.
-        </h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-slate-500">
-          Capture physician relationships at events or discover new opportunities through Medicare intelligence.
-          Enrich, communicate, schedule, track and convert — all from one platform.
-        </p>
+        <div className="grid items-center gap-8 lg:grid-cols-[1.5fr_1fr]">
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-primary">Physician Engagement &amp; Intelligence Platform</p>
+            <h1 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
+              Physician Intelligence.<br className="hidden sm:block" /> Engagement. Growth.
+            </h1>
+            <p className="mt-4 max-w-2xl text-lg leading-relaxed text-slate-500">
+              Capture physician relationships at events or discover new opportunities through Medicare intelligence.
+              Enrich, communicate, schedule, track and convert — all from one platform.
+            </p>
 
-        <div className="mt-6 flex flex-wrap items-center gap-4">
-          <p className="font-display text-lg font-semibold text-slate-700">
-            {user ? `Welcome back, ${user.name?.split(" ")[0]}.` : "Choose your workspace."}
-          </p>
-          {continueWs && (
-            <button data-testid="continue-workspace" onClick={continueWs === "crm" ? goCrm : goEvents}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 active:scale-95">
-              Continue to {continueWs === "crm" ? "CRM" : "Events"} <ArrowRight className="h-4 w-4" />
-            </button>
-          )}
+            <div className="mt-6 flex flex-wrap items-center gap-4">
+              <p className="font-display text-lg font-semibold text-slate-700">
+                {user ? `Welcome back, ${user.name?.split(" ")[0]}.` : "Choose your workspace."}
+              </p>
+              {continueWs && (
+                <button data-testid="continue-workspace" onClick={continueWs === "crm" ? goCrm : goEvents}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 active:scale-95">
+                  Continue to {continueWs === "crm" ? "CRM" : "Events"} <ArrowRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="hidden lg:block">
+            <div className="relative">
+              <img src={HERO_IMG} alt="Physician using a tablet" loading="lazy"
+                className="aspect-[4/3] w-full rounded-3xl object-cover shadow-xl ring-1 ring-slate-200" />
+              <div className="absolute -bottom-4 -left-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
+                <p className="text-2xl font-bold text-primary">Real-time</p>
+                <p className="text-xs font-semibold text-slate-500">Medicare Part D scoring</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <h2 className="mb-4 mt-10 text-xs font-bold uppercase tracking-wider text-slate-400">Choose your workspace</h2>
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Events */}
           <section className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
+            <img src={EVENTS_IMG} alt="Conference exhibition hall" loading="lazy"
+              className="-mx-7 -mt-7 mb-5 h-40 w-full object-cover" />
             <div className="mb-4 flex items-center gap-3">
               <div className="inline-flex rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 p-3 text-white shadow-sm"><Radio className="h-6 w-6" /></div>
               <div className="flex-1">
@@ -151,6 +182,8 @@ export default function Launcher() {
 
           {/* CRM */}
           <section className={`group relative overflow-hidden rounded-3xl border p-7 shadow-sm transition-transform ${canCrm ? "border-slate-200 bg-white hover:-translate-y-1 hover:shadow-lg" : "border-slate-200 bg-slate-50 opacity-70"}`}>
+            <img src={CRM_IMG} alt="Sales analytics dashboard" loading="lazy"
+              className="-mx-7 -mt-7 mb-5 h-40 w-full object-cover" />
             <div className="mb-4 flex items-center gap-3">
               <div className="inline-flex rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-3 text-white shadow-sm"><LayoutGrid className="h-6 w-6" /></div>
               <div className="flex-1">
@@ -188,6 +221,24 @@ export default function Launcher() {
               {i < WORKFLOW.length - 1 && <ArrowRight className="h-4 w-4 text-slate-300" />}
             </React.Fragment>
           ))}
+        </div>
+
+        {/* Feature showcase — what BoothIQ does */}
+        <div className="mt-16">
+          <h2 className="text-center text-xs font-bold uppercase tracking-wider text-primary">Everything BoothIQ does</h2>
+          <p className="mx-auto mt-2 max-w-2xl text-center text-lg text-slate-500">
+            From the first booth interaction to a closed opportunity — one connected physician engagement platform.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {FEATURES.map((f) => (
+              <div key={f.title} data-testid={`feature-${f.title.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
+                <div className="mb-3 inline-flex rounded-xl bg-emerald-50 p-2.5 text-primary"><f.icon className="h-5 w-5" /></div>
+                <p className="font-display font-bold text-slate-900">{f.title}</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-500">{f.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {role === "admin" && (

@@ -6,6 +6,9 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.7 (2026-08) — Home Page: feature showcase + imagery
+- Enhanced the authenticated home (`Launcher.js`): SaaS hero with a physician image + floating "Real-time Medicare Part D scoring" badge; both workspace cards (Events / CRM) now have photographic banners (conference hall / analytics dashboard); new **"Everything BoothIQ does"** 8-tile feature grid (Medicare scoring, prize-wheel capture, AI Copilot, enrichment, multi-channel outreach, campaigns, teams & forecasting, mobile rep app). Images are Unsplash URLs (no base64/blobs). Self-tested via screenshots. Version → **v2.7**.
+
 ## v2.6 (2026-08) — Event Self-Registration QR Posters
 - **Booth walk-up self-registration**: new public page `SelfRegister.js` at route `/e/:eventId` (unauthenticated, mobile-first). A physician scans the event QR poster and self-registers from their own phone; the submission reuses the existing public kiosk endpoints (`GET /api/kiosk/config`, `POST /api/kiosk/leads`) so the lead flows into the SAME booth pipeline (physician matching, 340B/RPM scoring, staff SMS alerts, dashboard push) and can spin the prize wheel (`/wheel/{leadId}`) on success.
 - **QR posters on Events**: `EventsHome.js` shows a "QR Poster" action per event; reusable `components/QrPoster.js` (`QrPosterModal`) renders the QR of `/e/{eventId}` with Download PNG + Print Poster ("Scan to check in & spin the wheel").
