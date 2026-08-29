@@ -22,6 +22,8 @@ from routes_sequences import router as sequences_router, sequence_worker
 from routes_comms import router as comms_router
 from routes_growth import router as growth_router
 from routes_agent import router as agent_router
+from routes_teams import router as teams_router
+from routes_forecast import router as forecast_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
@@ -63,6 +65,8 @@ app.include_router(sequences_router)
 app.include_router(comms_router)
 app.include_router(growth_router)
 app.include_router(agent_router)
+app.include_router(teams_router)
+app.include_router(forecast_router)
 
 
 @app.websocket("/api/ws/{room}")

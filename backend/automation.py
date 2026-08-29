@@ -11,7 +11,7 @@ EVENTS = ["lead_created", "lead_assigned", "status_changed", "medicare_matched",
 CONDITION_FIELDS = ["status", "priority", "source", "state", "specialty",
                     "tier_340b", "tier_rpm", "medicare_match_status"]
 ACTION_TYPES = ["create_task", "notify_manager", "change_status", "add_tag",
-                "start_sequence", "schedule_followup"]
+                "start_sequence", "schedule_followup", "route_lead"]
 
 
 def _resolve(field, lead):
@@ -77,6 +77,9 @@ async def _run_actions(rule, lead, user):
                         "id": str(uuid.uuid4()), "sequence_id": a["value"], "lead_id": lid,
                         "status": "active", "current_step": 0, "next_run_at": now_iso(),
                         "enrolled_by": "automation", "started_at": now_iso()})
+            elif t == "route_lead":
+                from routes_teams import auto_route_lead
+                await auto_route_lead(lead, user)
             await log_event("lead", lid, "automation", user,
                             f"Automation '{rule.get('name')}' → {t}", meta={"rule_id": rule.get("id")})
         except Exception:  # noqa: BLE001

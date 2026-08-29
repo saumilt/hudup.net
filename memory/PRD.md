@@ -39,6 +39,11 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v2.3 (2026-06) — Wave 9 (Territories & Teams) + Wave 10 (Forecasting)
+- **Teams & Territories** (`routes_teams.py`, `/crm/teams`, manager): create teams (lead manager + AM members), territories (states/specialties → team), **round-robin lead routing** (`auto_route_lead` picks the next team member by rotating cursor), route-one + route-unassigned endpoints, and a new automation action `route_lead` (e.g. "when lead_created → route_lead"). **Quotas** per rep (leads/meetings/opps/revenue) with month-to-date attainment bars.
+- **Sales Forecast** (`routes_forecast.py`, `/crm/forecast`, manager): open pipeline value, probability-weighted forecast (Discovery 10% → Negotiation 75%), win rate (won/(won+lost)), avg deal, won revenue, pipeline-by-stage funnel, and by-account-manager breakdown.
+- Verified via curl (routed 7 leads, quota attainment, forecast math) + UI screenshots. Version → v2.3.
+
 ## v2.2 (2026-06) — Wave 8: Autonomous AI Agent
 - **AI Agent** (`routes_agent.py`, Emergent universal key): on any lead, **AI Agent** generates a human-in-the-loop action plan — summary, reasoning, 3-4 prioritized `next_actions` (status/task/email/sms), and draft email + SMS. `POST /api/crm/leads/{id}/agent/plan`. The rep approves exactly which actions run; `POST .../agent/execute` applies only approved items (create task, change status, send email via Resend, send SMS via Twilio — all consent-checked) and logs each as an AI-labeled activity. Nothing sends without explicit approval.
 - Verified via curl + UI screenshot. Version → v2.2.

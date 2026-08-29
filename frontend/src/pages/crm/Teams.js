@@ -1,0 +1,148 @@
+import React, { useEffect, useState, useCallback } from "react";
+import { api, formatApiError } from "@/lib/api";
+import { toast } from "sonner";
+import { PageHeader } from "@/components/crm/CrmShell";
+import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
+import { Network, Plus, MapPin, Shuffle } from "lucide-react";
+
+function Bar({ actual, target, fmt }) {
+  const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
+  const color = pct >= 80 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200"><div className={`h-full ${color}`} style={{ width: `${pct}%` }} /></div>
+      <span className="text-xs text-slate-500">{fmt ? money(actual) : actual}/{fmt ? money(target) : target}</span>
+    </div>
+  );
+}
+
+export default function Teams() {
+  const [ams, setAms] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [terrs, setTerrs] = useState([]);
+  const [att, setAtt] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [team, setTeam] = useState({ name: "", member_ids: [] });
+  const [terr, setTerr] = useState({ name: "", states: "", specialties: "", team_id: "" });
+
+  const load = useCallback(async () => {
+    const [a, t, tr, q] = await Promise.all([
+      api.get("/users?role=account_manager"), api.get("/crm/teams"),
+      api.get("/crm/territories"), api.get("/crm/quotas/attainment"),
+    ]);
+    setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const createTeam = async () => {
+    if (!team.name.trim() || !team.member_ids.length) return toast.error("Name and at least one member");
+    try { await api.post("/crm/teams", team); toast.success("Team created"); setModal(null); setTeam({ name: "", member_ids: [] }); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const createTerr = async () => {
+    if (!terr.name.trim() || !terr.team_id) return toast.error("Name and team required");
+    try {
+      await api.post("/crm/territories", {
+        name: terr.name, team_id: terr.team_id,
+        states: terr.states.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
+        specialties: terr.specialties.split(",").map((s) => s.trim()).filter(Boolean),
+      });
+      toast.success("Territory created"); setModal(null); setTerr({ name: "", states: "", specialties: "", team_id: "" }); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const routeUnassigned = async () => {
+    try { const r = await api.post("/crm/leads/route-unassigned"); toast.success(`Routed ${r.data.routed} lead(s)`); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const saveQuota = async (row, patch) => {
+    try { await api.put("/crm/quotas", { user_id: row.user_id, leads_target: row.leads_target, meetings_target: row.meetings_target, opps_target: row.opps_target, revenue_target: row.revenue_target, ...patch }); toast.success("Quota saved"); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const teamName = (id) => (teams.find((t) => t.id === id) || {}).name || "—";
+
+  return (
+    <div>
+      <PageHeader title="Teams & Territories" subtitle="Hierarchy, round-robin routing and quotas">
+        <Btn variant="ghost" onClick={routeUnassigned} data-testid="route-unassigned"><Shuffle className="h-4 w-4" /> Route Unassigned</Btn>
+        <Btn onClick={() => setModal("terr")} data-testid="terr-create-btn"><MapPin className="h-4 w-4" /> New Territory</Btn>
+        <Btn onClick={() => setModal("team")} data-testid="team-create-btn"><Plus className="h-4 w-4" /> New Team</Btn>
+      </PageHeader>
+      <div className="grid gap-6 p-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><Network className="h-4 w-4 text-primary" /> Teams</h2>
+          {teams.length === 0 ? <p className="text-sm text-slate-400">No teams yet.</p> :
+            teams.map((t) => (
+              <div key={t.id} data-testid="team-card" className="border-b border-slate-50 py-2">
+                <p className="font-semibold text-slate-800">{t.name}</p>
+                <p className="text-xs text-slate-400">{(t.member_ids || []).length} member(s)</p>
+              </div>
+            ))}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><MapPin className="h-4 w-4 text-primary" /> Territories</h2>
+          {terrs.length === 0 ? <p className="text-sm text-slate-400">No territories yet.</p> :
+            terrs.map((t) => (
+              <div key={t.id} data-testid="terr-card" className="border-b border-slate-50 py-2">
+                <p className="font-semibold text-slate-800">{t.name} <span className="text-xs font-normal text-slate-400">→ {teamName(t.team_id)}</span></p>
+                <p className="text-xs text-slate-400">{[(t.states || []).join(", "), (t.specialties || []).join(", ")].filter(Boolean).join(" · ") || "All"}</p>
+              </div>
+            ))}
+        </div>
+      </div>
+      <div className="px-6 pb-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-3 font-display font-bold text-slate-900">Quota Attainment (this month)</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-xs uppercase text-slate-400">
+                <th className="py-1">Rep</th><th>Leads</th><th>Meetings</th><th>Opps</th><th>Revenue</th><th>Targets (edit)</th>
+              </tr></thead>
+              <tbody>
+                {att.map((r) => (
+                  <tr key={r.user_id} data-testid="quota-row" className="border-t border-slate-50">
+                    <td className="py-2 font-semibold text-slate-700">{r.name}</td>
+                    <td><Bar actual={r.leads} target={r.leads_target} /></td>
+                    <td><Bar actual={r.meetings} target={r.meetings_target} /></td>
+                    <td><Bar actual={r.opps} target={r.opps_target} /></td>
+                    <td><Bar actual={r.revenue} target={r.revenue_target} fmt /></td>
+                    <td>
+                      <input data-testid="quota-revenue" type="number" defaultValue={r.revenue_target} onBlur={(e) => saveQuota(r, { revenue_target: Number(e.target.value) })} className="w-28 rounded border border-slate-200 px-2 py-1 text-xs" placeholder="Revenue target" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <Modal open={modal === "team"} onClose={() => setModal(null)} title="New Team">
+        <Field label="Team name"><input data-testid="team-name" value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} className={inputCls} /></Field>
+        <Field label="Members (Account Managers)">
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+            {ams.map((a) => (
+              <label key={a.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={team.member_ids.includes(a.id)} onChange={(e) => setTeam({ ...team, member_ids: e.target.checked ? [...team.member_ids, a.id] : team.member_ids.filter((x) => x !== a.id) })} className="h-4 w-4 accent-primary" />
+                {a.name}
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Btn onClick={createTeam} data-testid="team-save" className="mt-2 w-full justify-center">Create Team</Btn>
+      </Modal>
+
+      <Modal open={modal === "terr"} onClose={() => setModal(null)} title="New Territory">
+        <Field label="Territory name"><input data-testid="terr-name" value={terr.name} onChange={(e) => setTerr({ ...terr, name: e.target.value })} className={inputCls} /></Field>
+        <Field label="States (comma-separated, e.g. TX, OK)"><input value={terr.states} onChange={(e) => setTerr({ ...terr, states: e.target.value })} className={inputCls} /></Field>
+        <Field label="Specialties (comma-separated)"><input value={terr.specialties} onChange={(e) => setTerr({ ...terr, specialties: e.target.value })} className={inputCls} /></Field>
+        <Field label="Assign to team">
+          <select data-testid="terr-team" value={terr.team_id} onChange={(e) => setTerr({ ...terr, team_id: e.target.value })} className={inputCls}>
+            <option value="">Select team…</option>
+            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </Field>
+        <Btn onClick={createTerr} data-testid="terr-save" className="mt-2 w-full justify-center">Create Territory</Btn>
+      </Modal>
+    </div>
+  );
+}

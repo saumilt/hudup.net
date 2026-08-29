@@ -29,6 +29,8 @@ import CrmAnalytics from "@/pages/crm/Analytics";
 import CrmAutomation from "@/pages/crm/Automation";
 import CrmCallLists from "@/pages/crm/CallLists";
 import CrmExplorer from "@/pages/crm/DataExplorer";
+import CrmTeams from "@/pages/crm/Teams";
+import CrmForecast from "@/pages/crm/Forecast";
 import EventsHome from "@/pages/EventsHome";
 
 const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
@@ -103,6 +105,8 @@ function App() {
             <Route path="communications" element={<CrmCommunications />} />
             <Route path="call-lists" element={<CrmCallLists />} />
             <Route path="explorer" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmExplorer /></ProtectedRoute>} />
+            <Route path="teams" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmTeams /></ProtectedRoute>} />
+            <Route path="forecast" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmForecast /></ProtectedRoute>} />
             <Route path="automation" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmAutomation /></ProtectedRoute>} />
             <Route path="analytics" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmAnalytics /></ProtectedRoute>} />
             <Route path="import" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmImport /></ProtectedRoute>} />
