@@ -107,3 +107,32 @@ export function ProbabilityBadge({ snapshot, showLabel = true, testid }) {
     </span>
   );
 }
+
+// Data-completeness score for a lead (distinct from sales/Medicare value).
+export function leadCompleteness(lead) {
+  const e = lead?.enrichment || {};
+  const pr = lead?.practice || {};
+  const checks = [
+    ["NPI", lead?.matched_npi || lead?.npi],
+    ["Specialty", (lead?.medicare_snapshot || {}).specialty || lead?.specialty],
+    ["Practice", lead?.org_name],
+    ["Phone", lead?.phone],
+    ["Email", lead?.email],
+    ["Medicare match", lead?.medicare_match_status === "matched"],
+    ["Website", pr.website],
+    ["LinkedIn", e.linkedin_url],
+    ["Location", lead?.city && lead?.state],
+  ];
+  const have = checks.filter(([, v]) => !!v).length;
+  return { pct: Math.round((have / checks.length) * 100), checks };
+}
+export function CompletenessBadge({ lead, testid }) {
+  const { pct } = leadCompleteness(lead);
+  const color = pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
+  return (
+    <span data-testid={testid} className="inline-flex items-center gap-1.5" title="Data completeness">
+      <span className="h-1.5 w-14 overflow-hidden rounded-full bg-slate-200"><span className={`block h-full ${color}`} style={{ width: `${pct}%` }} /></span>
+      <span className="text-xs font-bold text-slate-500">{pct}%</span>
+    </span>
+  );
+}

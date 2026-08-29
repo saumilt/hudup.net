@@ -6,7 +6,7 @@ import { APP_VERSION } from "@/version";
 import {
   LayoutDashboard, Users2, Target, CalendarClock, Building2, Search,
   Activity, LogOut, Settings2, UserCog, Radio, Plus, ChevronDown, Grid3x3,
-  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3,
+  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3, PhoneCall, Zap, Compass,
 } from "lucide-react";
 
 const ROLE_LABEL = {
@@ -19,6 +19,7 @@ const NAV = [
   { to: "/crm/opportunities", label: "Opportunities", icon: Target },
   { to: "/crm/meetings", label: "Meetings & Tasks", icon: CalendarClock },
   { to: "/crm/communications", label: "Communications", icon: Inbox },
+  { to: "/crm/call-lists", label: "Call Lists", icon: PhoneCall },
   { to: "/crm/accounts", label: "Accounts / Physicians", icon: Building2 },
   { to: "/crm/medicare", label: "Medicare Search", icon: Search },
   { to: "/crm/sequences", label: "Sequences", icon: Workflow },
@@ -129,6 +130,16 @@ export default function CrmShell() {
             </NavLink>
           ))}
           <div className="my-2 border-t border-slate-100" />
+          {(user?.role === "admin" || user?.role === "lead_manager") && (
+            <NavLink to="/crm/explorer" data-testid="nav-explorer" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+              <Compass className="h-4 w-4" /> Data Explorer
+            </NavLink>
+          )}
+          {(user?.role === "admin" || user?.role === "lead_manager") && (
+            <NavLink to="/crm/automation" data-testid="nav-automation" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+              <Zap className="h-4 w-4" /> Automation
+            </NavLink>
+          )}
           {(user?.role === "admin" || user?.role === "lead_manager") && (
             <NavLink to="/crm/analytics" data-testid="nav-analytics" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <BarChart3 className="h-4 w-4" /> Analytics

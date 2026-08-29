@@ -39,6 +39,19 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 2. Add the column-mapping confirmation step in the ingestion UI.
 3. Post-MVP hardening from test report `critical_code_review_comments`.
 
+## v2.1 (2026-06) — Wave 6 (Automation + Call Lists) & Wave 7 (Data Explorer, Completeness)
+- **Automation Rules** (`automation.py`, `/crm/automation`, manager): WHEN [event] IF [conditions] THEN [actions]. Events: lead_created, status_changed, lead_assigned, medicare_matched, opportunity_created, meeting_completed. Actions: create_task, schedule_followup, change_status, add_tag, start_sequence, notify_manager. Default-safe (task/draft over sending). Hooked into lead create + status change. Verified: "status→Qualified" auto-enrolls a sequence + creates a task.
+- **Smart Call Lists** (`/crm/call-lists`): build a queue from a tier/state/status filter; focused Call Queue UI (Hot/Warm badge, tiers, phone, disposition + notes) with **Save & Next / Skip** auto-advance; each disposition logs a call to the timeline.
+- **Data Explorer** (`/crm/explorer`, manager): drill by state / specialty / 340B tier / min $-per-claim over the full Medicare universe (1.14M), with top-state & top-specialty facets, in-CRM vs not-in-CRM counts, and one-click **Create Call List** / Open in Medicare Search.
+- **Data Completeness + Relationships**: per-lead completeness score (NPI, specialty, practice, phone, email, Medicare match, website, LinkedIn, location) with a colored badge + checklist, plus a compact relationship chain (specialty → practice → Medicare → opportunity → account manager) on the lead record.
+- Verified via curl + UI screenshots. Version → v2.1. Full standalone Relationship-Map graph page + record-freshness timestamps remain as Wave 7 polish.
+
+## PARKED / BACKLOG (per user)
+- **Wave 4 — Browser Calling** (Twilio Voice softphone/conference/recording) — needs Twilio Voice API Key SID+Secret, TwiML App SID, voice number.
+- **Wave 5 — Mailbox OAuth** (Gmail/Outlook) — needs Google/Microsoft OAuth creds.
+- **Wave 8 — Autonomous AI Agent** — build after remaining backlog.
+- Future: Wave 9 Territories/Teams · Wave 10 Forecasting/Dashboards · Wave 11 External Sync & API · Wave 12 Mobile (Expo) · Wave 13 Compliance/SSO · Wave 14 Documents/Proposals · Wave 15 Campaigns.
+
 ## v2.0 (2026-06) — Expansion Wave 3: Practice Enrich + Comms Inbox + Analytics
 - **Practice/Company Enrich** (PDL company API): lead action **Enrich Practice** → preview (name, website, LinkedIn company page, industry, size, employee count, founded, location) with accept-selected + provenance into `lead.practice`. `POST /api/crm/leads/{id}/enrich-company` (+ `/accept`).
 - **Unified Communications Inbox** (`/crm/communications`, `GET /api/crm/communications`): one feed of emails + SMS + calls with channel/direction, contact, lead status, "Needs response", role-scoped (AM sees own), tabs + counts; click → lead.

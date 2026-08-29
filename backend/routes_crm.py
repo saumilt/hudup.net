@@ -113,6 +113,10 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
     await db.crm_leads.insert_one(dict(doc))
     doc.pop("_id", None)
     await log_activity(lead_id, activity("created", user, f"Lead {doc['lead_number']} created via {data.source}"))
+    from automation import fire_event
+    await fire_event("lead_created", doc, user)
+    if doc.get("medicare_match_status") == "matched":
+        await fire_event("medicare_matched", doc, user)
     return doc
 
 
@@ -199,7 +203,7 @@ class StatusInput(BaseModel):
 async def change_status(lead_id: str, data: StatusInput, user=Depends(ANY_CRM)):
     if data.status not in LEAD_STATUSES:
         raise HTTPException(400, "Invalid status")
-    lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "status": 1})
+    lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
     if not lead:
         raise HTTPException(404, "Lead not found")
     old = lead.get("status")
@@ -211,6 +215,9 @@ async def change_status(lead_id: str, data: StatusInput, user=Depends(ANY_CRM)):
     await db.crm_leads.update_one({"id": lead_id}, {"$set": patch, "$push": {"status_history": hist}})
     await log_activity(lead_id, activity("status", user, f"Status {old} → {data.status}",
                                          {"reason": data.reason}))
+    lead["status"] = data.status
+    from automation import fire_event
+    await fire_event("status_changed", lead, user)
     return {"ok": True, "status": data.status}
 
 

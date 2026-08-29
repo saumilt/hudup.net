@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge } from "@/components/crm/kit";
+import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
   Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2 } from "lucide-react";
 
@@ -260,6 +260,28 @@ export default function LeadDetail() {
               <div><p className="text-xs uppercase text-slate-400">Created</p>{fmtDate(lead.created_at)}</div>
             </div>
             {lead.tags?.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{lead.tags.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{t}</span>)}</div>}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5" data-testid="ld-completeness">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display font-bold text-slate-900">Data Completeness</h2>
+              <CompletenessBadge lead={lead} />
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              {leadCompleteness(lead).checks.map(([label, v]) => (
+                <span key={label} className={`flex items-center gap-1 ${v ? "text-slate-600" : "text-slate-300"}`}>{v ? "✓" : "○"} {label}</span>
+              ))}
+            </div>
+            <div className="mt-3 border-t border-slate-100 pt-2">
+              <p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Relationships</p>
+              <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
+                {(lead.medicare_snapshot?.specialty || lead.specialty) && <span className="rounded bg-slate-100 px-1.5 py-0.5">{lead.medicare_snapshot?.specialty || lead.specialty}</span>}
+                {lead.org_name && <><span className="text-slate-300">→</span><span className="rounded bg-slate-100 px-1.5 py-0.5">{lead.org_name}</span></>}
+                {lead.matched_npi && <><span className="text-slate-300">→</span><span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">Medicare {lead.dataset_year || 2024}</span></>}
+                {lead.opportunity_id && <><span className="text-slate-300">→</span><span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">Opportunity</span></>}
+                {lead.account_manager_name && <><span className="text-slate-300">→</span><span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">{lead.account_manager_name}</span></>}
+              </div>
+            </div>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-5">
