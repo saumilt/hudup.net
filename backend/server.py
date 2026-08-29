@@ -38,6 +38,18 @@ async def root():
     return {"message": "BoothIQ API", "status": "ok"}
 
 
+@app.get("/health")
+async def health():
+    """Liveness/readiness probe — must not touch the DB so the pod becomes
+    ready immediately even while background init runs / Atlas is warming up."""
+    return {"status": "ok"}
+
+
+@app.get("/api/health")
+async def api_health():
+    return {"status": "ok"}
+
+
 @app.post("/api/twilio/status")
 async def twilio_status(MessageSid: str = Form(None), MessageStatus: str = Form(None), ErrorCode: str = Form(None)):
     """Twilio delivery-status webhook — updates the alert log so failures are visible."""
@@ -117,6 +129,21 @@ DEFAULT_SEGMENTS = [
 
 @app.on_event("startup")
 async def startup():
+    # Never block readiness: schedule all DB init (indexes, seeds, migrations,
+    # background workers) so uvicorn accepts connections and answers /health
+    # immediately — critical against remote Atlas where these ops are slower.
+    import asyncio
+    asyncio.create_task(_initialize())
+
+
+async def _initialize():
+    try:
+        await _run_init()
+    except Exception as e:
+        logger.error(f"Background initialization failed (app still serving): {e}")
+
+
+async def _run_init():
     # Indexes for single-digit-ms NPI lookups at the counter.
     await db.physicians.create_index("npi")
     await db.physicians.create_index([("session_id", 1), ("npi", 1)])

@@ -6,6 +6,11 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.7.1 (2026-08) — Deployment fix: non-blocking startup + health endpoints
+- **Root cause of failed prod deploy**: `@app.on_event("startup")` awaited ~30 `create_index` calls + data migrations + `tiers.recompute_tiers` + seeds INLINE. Uvicorn doesn't accept connections until startup returns, so against remote Atlas readiness blocked (or slow/failed server-selection hung ~30s then crashed → CrashLoop). nginx readiness probe `GET /health` → `127.0.0.1:8001/health` got `connection refused`; pod never became ready → deploy timed out.
+- **Fix (server.py, code-only)**: (1) Added `GET /health` and `GET /api/health` → `{"status":"ok"}` with NO DB access so the probe returns 200 immediately. (2) `startup()` now only `asyncio.create_task(_initialize())` and returns instantly; all index/migration/seed/worker/storage init moved to `_run_init()` wrapped by `_initialize()` in try/except (a slow/failed Atlas op logs an error but never crashes the process or blocks serving).
+- Verified: uvicorn logs "Application startup complete." immediately; /health & /api/health → 200; login works (background seed completes shortly after). deployment_agent: backend PASS (only a non-applicable WARN about the preview-only Expo service on port 3001, intentionally left as the standard protected layout).
+
 ## v2.7 (2026-08) — Home Page: feature showcase + imagery
 - Enhanced the authenticated home (`Launcher.js`): SaaS hero with a physician image + floating "Real-time Medicare Part D scoring" badge; both workspace cards (Events / CRM) now have photographic banners (conference hall / analytics dashboard); new **"Everything BoothIQ does"** 8-tile feature grid (Medicare scoring, prize-wheel capture, AI Copilot, enrichment, multi-channel outreach, campaigns, teams & forecasting, mobile rep app). Images are Unsplash URLs (no base64/blobs). Self-tested via screenshots. Version → **v2.7**.
 
