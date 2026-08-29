@@ -161,12 +161,13 @@ async def set_quota(data: QuotaInput, user=Depends(MANAGER)):
 @router.get("/quotas/attainment")
 async def quota_attainment(user=Depends(MANAGER)):
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    ams = await db.users.find({"role": "account_manager"}, {"_id": 0, "id": 1, "name": 1}).to_list(200)
+    ams = await db.users.find({"role": {"$in": ["account_manager", "lead_manager"]}},
+                              {"_id": 0, "id": 1, "name": 1, "role": 1}).sort("name", 1).to_list(200)
     quotas = {q["user_id"]: q for q in await db.quotas.find({}, {"_id": 0}).to_list(200)}
     out = []
     for am in ams:
         uid = am["id"]
-        leads = await db.crm_leads.count_documents({"account_manager_id": uid})
+        leads = await db.crm_leads.count_documents({"account_manager_id": uid, "created_at": {"$gte": month_start}})
         meetings = await db.crm_meetings.count_documents({"owner_id": uid, "start_at": {"$gte": month_start}})
         opps = await db.crm_opportunities.count_documents({"owner_id": uid, "created_at": {"$gte": month_start}})
         won = await db.crm_opportunities.aggregate([
@@ -174,7 +175,7 @@ async def quota_attainment(user=Depends(MANAGER)):
             {"$group": {"_id": None, "rev": {"$sum": "$value"}}}]).to_list(1)
         revenue = (won[0]["rev"] if won else 0) or 0
         q = quotas.get(uid, {})
-        out.append({"user_id": uid, "name": am["name"],
+        out.append({"user_id": uid, "name": am["name"], "role": am.get("role"),
                     "leads": leads, "meetings": meetings, "opps": opps, "revenue": revenue,
                     "leads_target": q.get("leads_target", 0), "meetings_target": q.get("meetings_target", 0),
                     "opps_target": q.get("opps_target", 0), "revenue_target": q.get("revenue_target", 0)})

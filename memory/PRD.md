@@ -11,6 +11,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 - **Fix (server.py, code-only)**: (1) Added `GET /health` and `GET /api/health` → `{"status":"ok"}` with NO DB access so the probe returns 200 immediately. (2) `startup()` now only `asyncio.create_task(_initialize())` and returns instantly; all index/migration/seed/worker/storage init moved to `_run_init()` wrapped by `_initialize()` in try/except (a slow/failed Atlas op logs an error but never crashes the process or blocks serving).
 - Verified: uvicorn logs "Application startup complete." immediately; /health & /api/health → 200; login works (background seed completes shortly after). deployment_agent: backend PASS (only a non-applicable WARN about the preview-only Expo service on port 3001, intentionally left as the standard protected layout).
 
+## v2.10 (2026-08) — Quota attainment on Forecast + per-state territory routing
+- **Quota Attainment panel** (Forecast page): new section shows each rep's month-to-date **Leads / Meetings / Opps / Revenue vs target** as color-coded progress bars, with an inline "Edit targets" editor (PUT /api/crm/quotas). `quota_attainment` now includes **lead_managers** too (so Ankit shows) and counts leads month-to-date (was all-time).
+- **Per-state territory routing**: replaced the single national round-robin with **per-rep regional teams + territories** — West (April: 13 states), Central & South (Asiya: 20), East & Northeast (Ankit: 18). Each territory → a single-member team, so a lead auto-routes to the rep who owns that state. Verified: CA→April, TX→Asiya, NY/FL/GA→Ankit, WA→April.
+- **Quotas set** for April, Asiya, Ankit: 40 leads / 12 meetings / 6 opps / $50k per month (adjustable via the Forecast editor). NOTE: teams/territories/quotas live in the PREVIEW DB — re-create in production Atlas after Publish.
+- Self-tested via curl (state routing + attainment) and screenshot (quota panel). Version → **v2.10**.
+
 ## v2.9 (2026-08) — Auto-routing on lead creation + team setup + super_admin CRM access
 - **New leads auto-route**: `create_lead` (POST /api/crm/leads) now calls `auto_route_lead` when no `account_manager_id` is supplied — brand-new leads round-robin across the matching team. (Previously only campaign-capture leads routed.)
 - **super_admin CRM access fix**: `deps.require_roles` now always allows `super_admin` (in addition to `admin`) — without this the super_admin was 403'd on every CRM/manager route.
