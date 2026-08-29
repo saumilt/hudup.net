@@ -17,18 +17,20 @@ export default function ChangePin() {
 
   const dest = () => (user?.role === "staff" ? "/dashboard" : "/home");
 
+  const credOk = (s) => /^\d{4,8}$/.test(s) || (s.length >= 8 && /[A-Za-z]/.test(s) && /\d/.test(s));
+
   const submit = async (e) => {
     e.preventDefault();
-    if (next !== confirm) return toast.error("New PINs do not match");
-    if (!/^\d{4,8}$/.test(next)) return toast.error("PIN must be 4-8 digits");
+    if (next !== confirm) return toast.error("Entries do not match");
+    if (!credOk(next)) return toast.error("Use a 4-8 digit PIN, or a password of 8+ chars with letters and numbers");
     setLoading(true);
     try {
       await api.post("/auth/change-pin", { new_pin: next, current_pin: forced ? undefined : current });
       await refreshUser?.();
-      toast.success("PIN updated");
+      toast.success("Updated");
       nav(dest());
     } catch (err) {
-      toast.error(formatApiError(err.response?.data?.detail) || "Could not change PIN");
+      toast.error(formatApiError(err.response?.data?.detail) || "Could not update");
     } finally {
       setLoading(false);
     }
@@ -49,25 +51,26 @@ export default function ChangePin() {
           {forced ? "Welcome to BoothIQ" : "Change your PIN"}
         </h1>
         <p className="mb-6 text-sm text-slate-500">
-          {forced ? "For security, choose a new PIN to replace your temporary one." : "Enter your current PIN and a new one."}
+          {forced ? "For security, choose a new PIN or password to replace your temporary one." : "Enter your current credential and a new one."}
         </p>
 
         {!forced && (
           <>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">Current PIN</label>
-            <input data-testid="current-pin" type="password" inputMode="numeric" value={current} onChange={(e) => setCurrent(e.target.value)} required
-              className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="••••••" />
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">Current PIN or Password</label>
+            <input data-testid="current-pin" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required
+              className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Current PIN or password" />
           </>
         )}
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">New PIN (4-8 digits)</label>
-        <input data-testid="new-pin" type="password" inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value)} required
-          className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="••••••" />
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">Confirm New PIN</label>
-        <input data-testid="confirm-pin" type="password" inputMode="numeric" value={confirm} onChange={(e) => setConfirm(e.target.value)} required
-          className="mb-6 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="••••••" />
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">New PIN or Password</label>
+        <input data-testid="new-pin" type="password" value={next} onChange={(e) => setNext(e.target.value)} required
+          className="mb-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="New PIN or password" />
+        <p className="mb-4 text-xs text-slate-400">Use a 4–8 digit PIN, or a password of 8+ characters with letters and numbers.</p>
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">Confirm</label>
+        <input data-testid="confirm-pin" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required
+          className="mb-6 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Re-enter to confirm" />
         <button data-testid="change-pin-submit" disabled={loading}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 font-semibold text-white transition-transform active:scale-95 disabled:opacity-60">
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />} Save PIN
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />} Save
         </button>
       </form>
     </div>

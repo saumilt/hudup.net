@@ -5,17 +5,20 @@ from pymongo import ReturnDocument
 from deps import db
 
 # ---------------- Roles ----------------
+ROLE_SUPER_ADMIN = "super_admin"
 ROLE_ADMIN = "admin"
 ROLE_LEAD_MANAGER = "lead_manager"
 ROLE_ACCOUNT_MANAGER = "account_manager"
 ROLE_STAFF = "staff"
-ALL_ROLES = [ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF]
+ALL_ROLES = [ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF]
 ROLE_LABELS = {
+    ROLE_SUPER_ADMIN: "Super Admin",
     ROLE_ADMIN: "Admin",
     ROLE_LEAD_MANAGER: "Lead Manager",
     ROLE_ACCOUNT_MANAGER: "Account Manager",
     ROLE_STAFF: "Booth Staff",
 }
+ADMIN_ROLES = (ROLE_ADMIN, ROLE_SUPER_ADMIN)
 
 # ---------------- Lead lifecycle ----------------
 LEAD_STATUSES = [

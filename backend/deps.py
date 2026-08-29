@@ -31,6 +31,23 @@ def verify_pin(pin: str, hashed: str) -> bool:
         return False
 
 
+def credential_ok(s: str) -> tuple[bool, str]:
+    """A sign-in credential may be a numeric CODE (4-8 digits) OR a chosen
+    PASSWORD (>=8 chars containing both letters and numbers)."""
+    import re
+    if not s:
+        return False, "Required"
+    if s.isdigit():
+        if 4 <= len(s) <= 8:
+            return True, ""
+        return False, "Numeric code must be 4-8 digits"
+    if len(s) < 8:
+        return False, "Use a 4-8 digit code, or a password of at least 8 characters"
+    if not (re.search(r"[A-Za-z]", s) and re.search(r"\d", s)):
+        return False, "Password must include both letters and numbers"
+    return True, ""
+
+
 def create_token(user_id: str, email: str, role: str) -> str:
     payload = {
         "sub": user_id,
@@ -60,7 +77,7 @@ async def get_current_user(request: Request) -> dict:
 
 async def require_admin(request: Request) -> dict:
     user = await get_current_user(request)
-    if user.get("role") != "admin":
+    if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 

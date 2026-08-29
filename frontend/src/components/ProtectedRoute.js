@@ -12,7 +12,7 @@ export function ProtectedRoute({ children, adminOnly = false, roles = null }) {
       </div>
     );
   if (user === false) return <Navigate to="/login" replace />;
-  if (adminOnly && user.role !== "admin") return <Navigate to="/crm" replace />;
+  if (adminOnly && !["admin", "super_admin"].includes(user.role)) return <Navigate to="/crm" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;
 }

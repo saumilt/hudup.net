@@ -11,7 +11,7 @@ export default function LeadDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user } = useAuth();
-  const isManager = ["admin", "lead_manager"].includes(user?.role);
+  const isManager = ["admin", "super_admin", "lead_manager"].includes(user?.role);
   const [lead, setLead] = useState(null);
   const [meta, setMeta] = useState({ statuses: [], opp_stages: [] });
   const [ams, setAms] = useState([]);

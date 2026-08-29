@@ -10,7 +10,7 @@ import { Users2, Plus, UserCheck, Sparkles } from "lucide-react";
 export default function Leads() {
   const { user } = useAuth();
   const nav = useNavigate();
-  const isManager = ["admin", "lead_manager"].includes(user?.role);
+  const isManager = ["admin", "super_admin", "lead_manager"].includes(user?.role);
   const [meta, setMeta] = useState({ statuses: [], sources: [], priorities: [] });
   const [leads, setLeads] = useState([]);
   const [filters, setFilters] = useState({ status: "", priority: "", match: "", q: "", mine: false });

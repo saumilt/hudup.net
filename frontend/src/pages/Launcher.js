@@ -67,7 +67,7 @@ export default function Launcher() {
   const { user, logout } = useAuth();
   const [events, setEvents] = React.useState(null);
   const [eventId, setEventId] = React.useState(localStorage.getItem("boothiq_event_id") || "default");
-  const role = user?.role;
+  const role = user?.role === "super_admin" ? "admin" : user?.role;
   const canCrm = !user || ["admin", "lead_manager", "account_manager"].includes(role);
   const last = localStorage.getItem("boothiq_ws");
   const crmQuick = CRM_QUICK[role] || CRM_QUICK.default;

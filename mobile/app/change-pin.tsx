@@ -21,8 +21,9 @@ export default function ChangePin() {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (next !== confirm) return Alert.alert("Mismatch", "New PINs do not match.");
-    if (!/^\d{4,8}$/.test(next)) return Alert.alert("Invalid", "PIN must be 4-8 digits.");
+    if (next !== confirm) return Alert.alert("Mismatch", "Entries do not match.");
+    const credOk = /^\d{4,8}$/.test(next) || (next.length >= 8 && /[A-Za-z]/.test(next) && /\d/.test(next));
+    if (!credOk) return Alert.alert("Invalid", "Use a 4-8 digit PIN, or a password of 8+ characters with letters and numbers.");
     setBusy(true);
     try {
       await changePin(next, forced ? undefined : current);
@@ -41,24 +42,25 @@ export default function ChangePin() {
           <Ionicons name="key" size={26} color={colors.brand} />
           <Text style={styles.logo}>BoothIQ</Text>
         </View>
-        <Text style={styles.title}>{forced ? "Set your new PIN" : "Change PIN"}</Text>
+        <Text style={styles.title}>{forced ? "Set your new PIN" : "Change PIN or password"}</Text>
         <Text style={styles.subtitle}>
-          {forced ? "For security, replace your temporary PIN with one only you know." : "Enter your current PIN and choose a new one."}
+          {forced ? "For security, replace your temporary PIN with a PIN or password only you know." : "Enter your current credential and choose a new one."}
         </Text>
 
         <View style={styles.card}>
           {!forced && (
             <>
-              <Text style={styles.label}>Current PIN</Text>
-              <TextInput testID="current-pin" style={styles.input} value={current} onChangeText={setCurrent} secureTextEntry keyboardType="number-pad" placeholder="••••••" placeholderTextColor={colors.mutedLight} />
+              <Text style={styles.label}>Current PIN or Password</Text>
+              <TextInput testID="current-pin" style={styles.input} value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" placeholder="Current PIN or password" placeholderTextColor={colors.mutedLight} />
             </>
           )}
-          <Text style={[styles.label, !forced && { marginTop: spacing.md }]}>New PIN</Text>
-          <TextInput testID="new-pin" style={styles.input} value={next} onChangeText={setNext} secureTextEntry keyboardType="number-pad" placeholder="4-8 digits" placeholderTextColor={colors.mutedLight} />
-          <Text style={[styles.label, { marginTop: spacing.md }]}>Confirm New PIN</Text>
-          <TextInput testID="confirm-pin" style={styles.input} value={confirm} onChangeText={setConfirm} secureTextEntry keyboardType="number-pad" placeholder="••••••" placeholderTextColor={colors.mutedLight} />
+          <Text style={[styles.label, !forced && { marginTop: spacing.md }]}>New PIN or Password</Text>
+          <TextInput testID="new-pin" style={styles.input} value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" placeholder="4-8 digit PIN or 8+ char password" placeholderTextColor={colors.mutedLight} />
+          <Text style={styles.hint}>Use a 4–8 digit PIN, or a password of 8+ characters with letters and numbers.</Text>
+          <Text style={[styles.label, { marginTop: spacing.md }]}>Confirm</Text>
+          <TextInput testID="confirm-pin" style={styles.input} value={confirm} onChangeText={setConfirm} secureTextEntry autoCapitalize="none" placeholder="Re-enter to confirm" placeholderTextColor={colors.mutedLight} />
           <Pressable testID="change-pin-submit" style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]} onPress={submit} disabled={busy}>
-            {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Save PIN</Text>}
+            {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Save</Text>}
           </Pressable>
         </View>
       </ScrollView>
@@ -75,6 +77,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 15, color: colors.muted, marginTop: spacing.xs, lineHeight: 22 },
   card: { marginTop: spacing.xl, backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl, borderWidth: 1, borderColor: colors.border },
   label: { fontSize: 12, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: spacing.xs },
+  hint: { fontSize: 12, color: colors.mutedLight, marginTop: 6 },
   input: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 14, fontSize: 16, color: colors.onSurface },
   button: { marginTop: spacing.xl, backgroundColor: colors.brand, borderRadius: radius.pill, height: 54, alignItems: "center", justifyContent: "center" },
   buttonPressed: { transform: [{ scale: 0.97 }], backgroundColor: colors.brandSecondary },

@@ -17,7 +17,7 @@ const chIcon = (v) => (CHANNELS.find((c) => c.v === v) || CHANNELS[0]).icon;
 
 export default function Sequences() {
   const { user } = useAuth();
-  const isManager = ["admin", "lead_manager"].includes(user?.role);
+  const isManager = ["admin", "super_admin", "lead_manager"].includes(user?.role);
   const [seqs, setSeqs] = useState([]);
   const [show, setShow] = useState(false);
   const [name, setName] = useState("");

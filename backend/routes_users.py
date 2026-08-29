@@ -5,7 +5,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from deps import db, require_admin, hash_pin, get_current_user
+from deps import db, require_admin, hash_pin, get_current_user, credential_ok
 from crm_common import ALL_ROLES, ROLE_LABELS, now_iso
 from emailer import send_email, EmailError
 
@@ -62,6 +62,36 @@ async def _send_invite(name: str, email: str, pin: str, role: str) -> bool:
         return False
 
 
+async def _send_reset(name: str, email: str, pin: str) -> bool:
+    """Email a temporary PIN for a self-service password/PIN reset."""
+    url = _login_url()
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#0F172A">
+      <div style="background:#047857;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
+        <h2 style="margin:0;font-size:20px">Reset your BoothIQ PIN</h2>
+      </div>
+      <div style="border:1px solid #E2E8F0;border-top:none;padding:24px;border-radius:0 0 12px 12px">
+        <p>Hi {name or 'there'},</p>
+        <p>We received a request to reset the PIN for <b>{email}</b>. Use this temporary PIN to sign in:</p>
+        <div style="text-align:center;margin:20px 0">
+          <span style="display:inline-block;background:#ECFDF5;color:#065F46;font-size:28px;
+            letter-spacing:6px;font-weight:800;padding:14px 28px;border-radius:12px">{pin}</span>
+        </div>
+        <p style="font-size:14px;color:#334155">You'll be asked to choose a new PIN right after you sign in.</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="{url}" style="background:#047857;color:#fff;text-decoration:none;
+            padding:12px 28px;border-radius:999px;font-weight:700">Sign in to BoothIQ</a>
+        </p>
+        <p style="font-size:12px;color:#94A3B8">If you didn't request this, you can safely ignore this email — your current PIN still works until you use the temporary one.</p>
+      </div>
+    </div>"""
+    try:
+        await send_email(email, "Reset your BoothIQ PIN", html)
+        return True
+    except EmailError:
+        return False
+
+
 @router.get("")
 async def list_users(request: Request, role: str | None = None):
     """Any authenticated user can list users (needed for assignment pickers)."""
@@ -101,8 +131,10 @@ async def create_user(data: CreateUserInput, admin=Depends(require_admin)):
     # and force a change on first login.
     temp = data.pin is None or data.pin == ""
     pin = data.pin if not temp else _gen_temp_pin()
-    if not (pin and pin.isdigit() and 4 <= len(pin) <= 8):
-        raise HTTPException(400, "PIN must be 4-8 digits")
+    if not temp:
+        ok, msg = credential_ok(pin)
+        if not ok:
+            raise HTTPException(400, msg)
     doc = {
         "id": str(uuid.uuid4()), "email": email, "pin_hash": hash_pin(pin),
         "name": data.name.strip(), "role": data.role, "title": data.title,
@@ -160,8 +192,9 @@ class ResetPinInput(BaseModel):
 
 @router.post("/{user_id}/reset-pin")
 async def reset_pin(user_id: str, data: ResetPinInput, admin=Depends(require_admin)):
-    if not (data.pin and data.pin.isdigit() and 4 <= len(data.pin) <= 8):
-        raise HTTPException(400, "PIN must be 4-8 digits")
+    ok, msg = credential_ok(data.pin)
+    if not ok:
+        raise HTTPException(400, msg)
     r = await db.users.update_one({"id": user_id}, {"$set": {
         "pin_hash": hash_pin(data.pin), "must_change_pin": False}})
     if r.matched_count == 0:

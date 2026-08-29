@@ -207,7 +207,7 @@ export default function Dashboard() {
             <button data-testid="nav-leads" onClick={() => nav("/leads")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Filter className="h-3.5 w-3.5" /> Leads</button>
             <button data-testid="export-csv" onClick={() => fetchExport("csv")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> CSV</button>
             <button data-testid="export-xlsx" onClick={() => fetchExport("xlsx")} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download className="h-3.5 w-3.5" /> XLSX</button>
-            {user?.role === "admin" && <button onClick={() => nav("/admin")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Settings2 className="h-4 w-4" /></button>}
+            {["admin", "super_admin"].includes(user?.role) && <button onClick={() => nav("/admin")} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Settings2 className="h-4 w-4" /></button>}
             <button data-testid="logout-btn" onClick={() => { logout(); nav("/login"); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><LogOut className="h-4 w-4" /></button>
           </div>
         </div>

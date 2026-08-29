@@ -65,17 +65,20 @@ export default function Login() {
             keyboardType="email-address"
             autoCorrect={false}
           />
-          <Text style={[styles.label, { marginTop: spacing.md }]}>PIN</Text>
+          <Text style={[styles.label, { marginTop: spacing.md }]}>PIN or Password</Text>
           <TextInput
             testID="login-password-input"
             style={styles.input}
             value={pin}
             onChangeText={setPin}
-            placeholder="••••••"
+            placeholder="Enter your PIN or password"
             placeholderTextColor={colors.mutedLight}
             secureTextEntry
-            keyboardType="number-pad"
+            autoCapitalize="none"
           />
+          <Pressable testID="forgot-pin-link" onPress={() => router.push("/forgot-pin")} style={{ marginTop: spacing.sm }}>
+            <Text style={styles.forgot}>Forgot PIN or password?</Text>
+          </Pressable>
           {error && <Text testID="login-error" style={styles.error}>{error}</Text>}
           <Pressable
             testID="login-submit-button"
@@ -113,6 +116,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   error: { color: colors.error, fontSize: 14, fontWeight: "600", marginTop: spacing.md },
+  forgot: { color: colors.brand, fontSize: 14, fontWeight: "700", textAlign: "center" },
   button: {
     marginTop: spacing.xl, backgroundColor: colors.brand, borderRadius: radius.pill,
     height: 54, alignItems: "center", justifyContent: "center",

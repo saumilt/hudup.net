@@ -37,7 +37,7 @@ import CaptureForm from "@/pages/CaptureForm";
 import SelfRegister from "@/pages/SelfRegister";
 import EventsHome from "@/pages/EventsHome";
 
-const CRM_ROLES = ["admin", "lead_manager", "account_manager", "staff"];
+const CRM_ROLES = ["admin", "super_admin", "lead_manager", "account_manager", "staff"];
 
 function App() {
   return (
@@ -111,13 +111,13 @@ function App() {
             <Route path="sequences" element={<CrmSequences />} />
             <Route path="communications" element={<CrmCommunications />} />
             <Route path="call-lists" element={<CrmCallLists />} />
-            <Route path="explorer" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmExplorer /></ProtectedRoute>} />
-            <Route path="teams" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmTeams /></ProtectedRoute>} />
-            <Route path="campaigns" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmCampaigns /></ProtectedRoute>} />
-            <Route path="forecast" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmForecast /></ProtectedRoute>} />
-            <Route path="automation" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmAutomation /></ProtectedRoute>} />
-            <Route path="analytics" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmAnalytics /></ProtectedRoute>} />
-            <Route path="import" element={<ProtectedRoute roles={["admin", "lead_manager"]}><CrmImport /></ProtectedRoute>} />
+            <Route path="explorer" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmExplorer /></ProtectedRoute>} />
+            <Route path="teams" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmTeams /></ProtectedRoute>} />
+            <Route path="campaigns" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmCampaigns /></ProtectedRoute>} />
+            <Route path="forecast" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmForecast /></ProtectedRoute>} />
+            <Route path="automation" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmAutomation /></ProtectedRoute>} />
+            <Route path="analytics" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmAnalytics /></ProtectedRoute>} />
+            <Route path="import" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmImport /></ProtectedRoute>} />
             <Route path="providers" element={<ProtectedRoute adminOnly><CrmProviders /></ProtectedRoute>} />
             <Route path="users" element={<ProtectedRoute adminOnly><CrmUsers /></ProtectedRoute>} />
           </Route>

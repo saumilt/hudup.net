@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 13 — super_admin role, self-service forgot-pin, code-or-password credential policy — all verified on backend, web, and mobile with no regressions. Backend pytest test_iteration13_super_admin_forgot_pin.py: 14/14 passed. Verified: (a) super_admin — GET /api/users/roles returns Super Admin; POST /api/users creating role='super_admin' with pin='Health2026' succeeds and that token can hit GET /api/admin/sessions (200) and admin-gated POST /api/users (200); (b) forgot-pin — POST /api/auth/forgot-pin with unknown email returns generic 200 {ok:true, message:'If an account exists…'}, with a real throwaway email returns the SAME generic body AND rotates the pin (old pin now 401) + sets must_change_pin=true (confirmed via admin /api/users list); rate limit — after 3 rotations the 4th call still returns generic 200 but does NOT rotate (admin-set pin '864297' still logs in after the 4th call); (c) credential policy via /api/auth/change-pin — accepts '2468' (numeric) and 'Health2026' (password); rejects 'abc' (400), '123' (400), 'password' (400 no-number); change-pin clears must_change_pin (verified via GET /api/auth/me). POST /api/users with pin='abc' → 400. (d) role gating regression — account_manager gets 403 on /api/admin/sessions; lead_manager can GET /api/users; lead_manager gets 403 on /api/admin/sessions. WEB (https://prize-wheel-hub-4.preview.emergentagent.com): login screen shows label 'PIN or Password' + [data-testid=forgot-pin-link] opens modal with forgot-email-input + forgot-submit → forgot-result 'If an account exists…' + forgot-done. leadmanager@boothiq.com/639201 login → /home OK. Admin login → /home OK. Created super_admin via API and logged in on web → /home shows admin quick actions (Users & Teams, Enrichment & Providers, Import Data, Campaigns, Analytics, Medicare Search) + full CRM sidebar including Users & Roles + Providers + Admin Console; /crm/users and /crm/providers both accessible (adminOnly gate honors super_admin). /change-pin screen: renders 'PIN or Password' labels with current-pin (since user not forced), new-pin, confirm-pin, policy hint 'Use a 4–8 digit PIN, or a password of 8+ characters with letters and numbers'; mismatch new≠confirm → toast 'Entries do not match'; weak 'abc' → toast about 4-8 digit or 8+ char with letters+numbers; password 'NewPass2026' → 'Updated' toast → /home. MOBILE (Expo web preview 390x844): login shows 'PIN OR PASSWORD' + 'Forgot PIN or password?' link → routes to /forgot-pin (forgot-email-input, forgot-submit) which returns forgot-result generic message + Back-to-sign-in. Regression: accountmanager@boothiq.com/528174 → tabs (My Day 4 stat cards + Today's Meetings + Tasks Due + New Leads); no red-screen. Fresh temp-PIN user (via /api/users API) → mobile login redirects to /change-pin (new-pin + confirm-pin only, no current-pin since forced); saved with password 'MobilePass2026' → landed on tabs. No parity issues between web and mobile.",
+  "platforms_tested": ["web", "mobile"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_super_admin_forgot_pin.py",
+    "/app/test_reports/pytest/pytest_iter13.xml"
+  ],
+  "action_items": [
+    "(Carry-over from iter11/12, low) Nested <button> inside campaign-card in /app/frontend/src/pages/crm/Campaigns.js still present."
+  ],
+  "critical_code_review_comments": [
+    "deps.credential_ok correctly accepts 4-8 digit numeric code OR >=8 char password containing both letters and numbers; error messages are user-friendly.",
+    "routes_auth.change_pin's guard 'if not (new_pin.isdigit() and 4<=len<=8): credential_ok(...)' short-circuits digit-only PINs before enforcing the password rule — a 4-digit code like '2468' passes without falling through to credential_ok. That is the intended behavior per spec, but note the credential_ok check is only reached when the input is NOT a 4-8 digit numeric string, which is fine.",
+    "routes_auth.forgot_pin inserts an attempt row EVERY call (including for unknown emails) — this is good for consistent timing/response but means rate-limit is per-email (correct) and never leaks existence.",
+    "routes_auth.forgot_pin uses ISO-string comparison for the 15-min window against $gte on 'at'. Because ISO-8601 strings are lexicographically ordered, this works — but it's brittle if timezone formatting varies. Consider storing 'at' as a datetime or normalizing to UTC 'Z'. Not a functional bug today.",
+    "routes_users.create_user: credential_ok is only invoked when admin supplies an explicit pin. When temp is generated, _gen_temp_pin produces 6 digits which trivially satisfies credential_ok — good.",
+    "deps.require_admin now allows role in ('admin','super_admin') — consistent with ADMIN_ROLES in crm_common. All admin routes that use require_admin therefore automatically extend to super_admin.",
+    "crm_common.ADMIN_ROLES defined but require_admin uses a hardcoded tuple. Minor duplication — consider `if user.role not in ADMIN_ROLES` importing from crm_common (currently avoided due to import order deps->crm_common). Cosmetic.",
+    "Frontend ChangePin.js credOk regex matches deps.credential_ok. Both client and server enforce the same policy — good.",
+    "Frontend Login.js swallows all forgot-pin errors and always shows the generic message — prevents info leaks even on network error. Good.",
+    "Mobile app/change-pin.tsx (not reviewed in this file but observed rendering) hides current-pin when forced=true — matches web behavior; parity confirmed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration13_super_admin_forgot_pin.py",
+    "/app/test_reports/iteration_13.json",
+    "/app/test_reports/pytest/pytest_iter13.xml"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (web 5/5 flows, mobile 4/4 flows)"},
+  "test_credentials": "Used seeded accounts admin/482913, leadmanager/639201, accountmanager/528174 from /app/memory/test_credentials.md. Created throwaway super_admin (email test_iter13_sa_web_1788030808@boothiq.test) — final pin 'NewPass2026' after web change-pin test. Created throwaway account_manager (test_iter13_mob_cp_1788030929@boothiq.test) — final pin 'MobilePass2026' after mobile change-pin test. Both plus 5 more throwaway iter13 users deactivated (active=false) at cleanup.",
+  "seed_data_creation": "7 TEST_iter13 users created via /api/users, all deactivated post-run. pin_reset_attempts collection accumulated ~10 rows for throwaway emails (does not affect other flows since rate-limit is per-email).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file: pytest /app/backend/tests/test_iteration13_super_admin_forgot_pin.py -v -o addopts=. Test file loads REACT_APP_BACKEND_URL from /app/frontend/.env via python-dotenv. Web new testIDs: forgot-pin-link, forgot-email-input, forgot-submit, forgot-result, forgot-done. Web login label is now 'PIN or Password' (still testid login-pin). super_admin is treated as admin everywhere via deps.require_admin (admin,super_admin) and require_roles(...) with implicit +admin; NB super_admin does NOT get automatic access to non-admin manager routes UNLESS the route explicitly allows it — spot-check any lead_manager-only route if it needs super_admin extension. Mobile testIDs: login-email-input, login-password-input, login-submit-button, forgot-pin-link, forgot-email-input, forgot-submit, forgot-result, forgot-done, new-pin, confirm-pin, change-pin-submit. Mobile change-pin hides current-pin when must_change_pin=true. Do not test /api/register-push — 500 in preview is expected (placeholder EMERGENT_PUSH_KEY).",
+  "rca of the issue": "N/A — no functional bugs found in Iteration 13."
+}

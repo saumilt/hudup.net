@@ -130,42 +130,42 @@ export default function CrmShell() {
             </NavLink>
           ))}
           <div className="my-2 border-t border-slate-100" />
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/explorer" data-testid="nav-explorer" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Compass className="h-4 w-4" /> Data Explorer
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/automation" data-testid="nav-automation" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Zap className="h-4 w-4" /> Automation
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/campaigns" data-testid="nav-campaigns" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Megaphone className="h-4 w-4" /> Campaigns
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/forecast" data-testid="nav-forecast" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <TrendingUp className="h-4 w-4" /> Forecast
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/teams" data-testid="nav-teams" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Network className="h-4 w-4" /> Teams & Territories
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/analytics" data-testid="nav-analytics" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <BarChart3 className="h-4 w-4" /> Analytics
             </NavLink>
           )}
-          {(user?.role === "admin" || user?.role === "lead_manager") && (
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/import" data-testid="nav-import" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <Upload className="h-4 w-4" /> Data Import
             </NavLink>
           )}
-          {user?.role === "admin" && (
+          {["admin", "super_admin"].includes(user?.role) && (
             <>
               <NavLink to="/crm/users" data-testid="nav-users" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
                 <UserCog className="h-4 w-4" /> Users & Roles
