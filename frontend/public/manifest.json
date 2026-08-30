@@ -1,16 +1,25 @@
 {
-  "short_name": "BoothIQ",
-  "name": "BoothIQ Kiosk",
+  "short_name": "hudlup",
+  "name": "hudlup.net",
   "icons": [
     {
       "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
+      "sizes": "64x64 48x48 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ],
-  "start_url": "/kiosk",
+  "start_url": "/",
   "display": "standalone",
-  "orientation": "landscape",
   "theme_color": "#047857",
   "background_color": "#047857"
 }
