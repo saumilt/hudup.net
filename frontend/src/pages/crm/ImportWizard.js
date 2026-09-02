@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
@@ -14,9 +14,24 @@ export default function ImportWizard() {
   const [job, setJob] = useState(null);       // {import_id, headers, sample, row_count}
   const [mapping, setMapping] = useState({});
   const [rule, setRule] = useState("safe");
+  const [sources, setSources] = useState([]);
+  const [source, setSource] = useState("Data Scraping");
+  const [year, setYear] = useState("");
+  const [distribute, setDistribute] = useState("route");
   const [valid, setValid] = useState(null);   // {counts, preview, total}
   const [result, setResult] = useState(null); // {created, updated, skipped}
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => { api.get("/crm/lead-sources").then((r) => setSources(r.data)).catch(() => {}); }, []);
+
+  const addSource = async () => {
+    const name = window.prompt("New lead source name:");
+    if (!name || !name.trim()) return;
+    try {
+      const r = await api.post("/crm/lead-sources", { name: name.trim() });
+      setSources(r.data.sources); setSource(name.trim()); toast.success("Source added");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const upload = async () => {
     if (!file) return;
@@ -32,7 +47,7 @@ export default function ImportWizard() {
   const doValidate = async () => {
     setBusy(true);
     try {
-      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule });
+      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule, source, data_year: year ? Number(year) : null, distribute });
       const r = await api.post(`/imports/${job.import_id}/validate`);
       setValid(r.data); setStep(2);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
@@ -95,13 +110,39 @@ export default function ImportWizard() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 flex items-center gap-3">
-              <label className="text-sm text-slate-600">Import rule:</label>
-              <select data-testid="import-rule" value={rule} onChange={(e) => setRule(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                <option value="safe">Safe — create new, skip existing</option>
-                <option value="refresh">Refresh — fill missing on existing</option>
-              </select>
-              <Btn data-testid="import-validate" onClick={doValidate} disabled={busy} className="ml-auto">{busy ? "Checking…" : "Review Matches"} <ArrowRight className="h-4 w-4" /></Btn>
+            <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Lead source</label>
+                  <div className="flex gap-2">
+                    <select data-testid="import-source" value={source} onChange={(e) => setSource(e.target.value)} className={inputCls}>
+                      {sources.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <Btn variant="ghost" type="button" onClick={addSource} data-testid="import-add-source">+ Add</Btn>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Data collected year</label>
+                  <input data-testid="import-year" type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="e.g. 2026" className={inputCls} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Import rule</label>
+                  <select data-testid="import-rule" value={rule} onChange={(e) => setRule(e.target.value)} className={inputCls}>
+                    <option value="safe">Safe — create new, skip existing</option>
+                    <option value="refresh">Refresh — fill missing on existing</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Assignment</label>
+                  <select data-testid="import-distribute" value={distribute} onChange={(e) => setDistribute(e.target.value)} className={inputCls}>
+                    <option value="route">Territory routing (round-robin fallback)</option>
+                    <option value="equal">Assign equally to all reps (round-robin)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex">
+                <Btn data-testid="import-validate" onClick={doValidate} disabled={busy} className="ml-auto">{busy ? "Checking…" : "Review Matches"} <ArrowRight className="h-4 w-4" /></Btn>
+              </div>
             </div>
           </div>
         )}

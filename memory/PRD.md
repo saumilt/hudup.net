@@ -6,6 +6,16 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.16 (2026-06) — Managed lead sources + data-year tag + XLSX import + equal-distribution; 396-lead Medicare import
+- **Managed lead sources**: new `lead_sources` collection (lazy-seeded: Booth/Event, Manual Entry, Medicare Search, CSV Import, Referral, Website, Campaign, Other, **Data Scraping**, **Gujarati Physicians Event**). `GET/POST /api/crm/lead-sources`; `/api/crm/meta` now returns the managed list. Source is a dropdown + "+ Add" on the Import wizard and the New Lead form (add-anywhere, appears everywhere).
+- **Data-collected year**: `collected_year` on leads; set per-import and on the New Lead form; shown as "Data year" on the lead detail.
+- **XLSX header detection**: `_parse` now finds the real header row past title/blank preambles (first row within 20 with ≥3 non-empty cells) and reads data after it, on the first sheet.
+- **Equal distribution on import**: import options now include Source, Year, and Assignment = Territory routing (default) OR **Assign equally to all reps (round-robin, account managers only)**. Execute honors import-level `source`/`data_year`/`distribute`.
+- **Action — imported the user's Medicare file**: `Providers_Over5M_PerClaim7000_by_Geography.xlsx` → **396 leads**, source Data Scraping, year 2026, all matched to Medicare data (340B/RPM tiers, specialty, city, state), 5 metric columns saved as notes, **distributed equally 132/132/132** across the 3 account managers (April, Asiya, Account Manager).
+- **Phone/email limitation**: the file and the Medicare dataset contain NO phone/email, and the free NPI (NPPES) registry is DNS-blocked from this environment. Contact info can be filled via the per-lead **Enrich** (PeopleDataLabs) action; bulk PDL enrichment not auto-run (credits + rate limits) — pending user go-ahead.
+- Version → **v2.16**. Self-verified via the real import + UI screenshots (not run through the testing agent).
+
+
 ## v2.15 (2026-06) — Deactivate (soft-disable) UX + Sam PIN rotation
 - **Deactivate vs Delete**: login already rejects `active:false` accounts with 403 "Account is deactivated" (verified). Added a clear **Deactivate / Activate** button per user row (confirm on deactivate) and an **Inactive** status badge (rows dim when inactive); removed the ambiguous Active checkbox. Deactivating blocks sign-in but keeps all leads/history, and is captured in the audit trail (update → changed:["active"]). Verified: user could log in, then got 403 after deactivate.
 - **Sam PIN rotated** to **8677** via env `SUPER_ADMIN_PIN` (old 729164 now rejected; new PIN works; still super_admin, no forced change). Takes effect in production after re-Publish.

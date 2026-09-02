@@ -20,7 +20,7 @@ export default function Leads() {
   const [enrollSeq, setEnrollSeq] = useState("");
   const [seqs, setSeqs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [nl, setNl] = useState({ org_name: "", contact_first: "", contact_last: "", phone: "", email: "", source: "Manual Entry", priority: "Medium" });
+  const [nl, setNl] = useState({ org_name: "", contact_first: "", contact_last: "", phone: "", email: "", source: "Manual Entry", priority: "Medium", collected_year: "" });
 
   useEffect(() => {
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
@@ -63,10 +63,19 @@ export default function Leads() {
 
   const create = async () => {
     try {
-      const r = await api.post("/crm/leads", nl);
+      const r = await api.post("/crm/leads", { ...nl, collected_year: nl.collected_year ? Number(nl.collected_year) : null });
       toast.success(`Lead ${r.data.lead_number} created`);
-      setShowCreate(false); setNl({ org_name: "", contact_first: "", contact_last: "", phone: "", email: "", source: "Manual Entry", priority: "Medium" });
+      setShowCreate(false); setNl({ org_name: "", contact_first: "", contact_last: "", phone: "", email: "", source: "Manual Entry", priority: "Medium", collected_year: "" });
       load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const addSource = async () => {
+    const name = window.prompt("New lead source name:");
+    if (!name || !name.trim()) return;
+    try {
+      const rs = await api.post("/crm/lead-sources", { name: name.trim() });
+      setMeta((m) => ({ ...m, sources: rs.data.sources })); setNl((v) => ({ ...v, source: name.trim() }));
+      toast.success("Source added");
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
@@ -144,8 +153,14 @@ export default function Leads() {
           <Field label="Last name"><input value={nl.contact_last} onChange={(e) => setNl({ ...nl, contact_last: e.target.value })} className={inputCls} /></Field>
           <Field label="Phone"><input value={nl.phone} onChange={(e) => setNl({ ...nl, phone: e.target.value })} className={inputCls} /></Field>
           <Field label="Email"><input value={nl.email} onChange={(e) => setNl({ ...nl, email: e.target.value })} className={inputCls} /></Field>
-          <Field label="Source"><select value={nl.source} onChange={(e) => setNl({ ...nl, source: e.target.value })} className={inputCls}>{meta.sources.map((s) => <option key={s}>{s}</option>)}</select></Field>
+          <Field label="Source">
+            <div className="flex gap-2">
+              <select data-testid="nl-source" value={nl.source} onChange={(e) => setNl({ ...nl, source: e.target.value })} className={inputCls}>{meta.sources.map((s) => <option key={s}>{s}</option>)}</select>
+              <Btn variant="ghost" type="button" onClick={addSource} data-testid="nl-add-source">+ Add</Btn>
+            </div>
+          </Field>
           <Field label="Priority"><select value={nl.priority} onChange={(e) => setNl({ ...nl, priority: e.target.value })} className={inputCls}>{meta.priorities.map((s) => <option key={s}>{s}</option>)}</select></Field>
+          <Field label="Data collected year"><input data-testid="nl-year" type="number" value={nl.collected_year} onChange={(e) => setNl({ ...nl, collected_year: e.target.value })} placeholder="e.g. 2026" className={inputCls} /></Field>
         </div>
         <Btn onClick={create} data-testid="nl-save" className="mt-2 w-full justify-center">Create Lead</Btn>
       </Modal>

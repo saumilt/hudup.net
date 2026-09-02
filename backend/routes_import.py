@@ -32,12 +32,21 @@ def _parse(filename: str, raw: bytes) -> tuple[list[str], list[dict]]:
     if name.endswith((".xlsx", ".xls")):
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
-        ws = wb.active
-        rows = ws.iter_rows(values_only=True)
-        headers = [str(h).strip() if h is not None else f"col{i}" for i, h in enumerate(next(rows, []))]
+        ws = wb.worksheets[0]
+        all_rows = list(ws.iter_rows(values_only=True))
+        # Find the real header row: first row (within the first 20) with >= 3 non-empty cells.
+        hidx = 0
+        for i, r in enumerate(all_rows[:20]):
+            if sum(1 for c in r if c not in (None, "")) >= 3:
+                hidx = i
+                break
+        header_row = all_rows[hidx] if all_rows else []
+        headers = [str(h).strip() if h is not None else f"col{j}" for j, h in enumerate(header_row)]
         out = []
-        for r in rows:
-            out.append({headers[i]: ("" if v is None else str(v)) for i, v in enumerate(r) if i < len(headers)})
+        for r in all_rows[hidx + 1:]:
+            if all(c in (None, "") for c in r):
+                continue
+            out.append({headers[j]: ("" if v is None else str(v)) for j, v in enumerate(r) if j < len(headers)})
             if len(out) >= MAX_ROWS:
                 break
         return headers, out
@@ -120,13 +129,17 @@ async def analyze(import_id: str, user=Depends(IMPORTER)):
 class MappingInput(BaseModel):
     mapping: dict
     rule: str = "safe"  # safe (create new, skip existing) | refresh (fill missing on existing)
+    source: str | None = None
+    data_year: int | None = None
+    distribute: str = "route"  # route (territory + rr fallback) | equal (round-robin all reps)
 
 
 @router.post("/{import_id}/mapping")
 async def save_mapping(import_id: str, data: MappingInput, user=Depends(IMPORTER)):
     await _get_job(import_id)
-    await db.import_jobs.update_one({"id": import_id},
-                                    {"$set": {"mapping": data.mapping, "rule": data.rule, "status": "mapped"}})
+    await db.import_jobs.update_one({"id": import_id}, {"$set": {
+        "mapping": data.mapping, "rule": data.rule, "import_source": data.source,
+        "data_year": data.data_year, "distribute": data.distribute, "status": "mapped"}})
     return {"ok": True}
 
 
@@ -191,6 +204,17 @@ async def validate(import_id: str, user=Depends(IMPORTER)):
 async def execute(import_id: str, user=Depends(IMPORTER)):
     job = await _get_job(import_id)
     mapping, rule = job["mapping"], job.get("rule", "safe")
+    imp_source = job.get("import_source")
+    data_year = job.get("data_year")
+    distribute = job.get("distribute", "route")
+    # Build the equal-distribution pool (active account managers / reps) once.
+    pool = []
+    if distribute == "equal":
+        pu = await db.users.find(
+            {"role": "account_manager", "active": {"$ne": False}},
+            {"_id": 0, "id": 1, "name": 1}).sort("name", 1).to_list(500)
+        pool = [(u["id"], u.get("name")) for u in pu]
+    rr_idx = 0
     seen_npi, seen_email = set(), set()
     created_ids, created, updated, skipped = [], 0, 0, 0
     for row in job["rows"]:
@@ -239,7 +263,8 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
         doc = {"id": lead_id, "lead_number": f"L-{num:05d}",
                "org_name": p.get("org_name"), "contact_first": p.get("contact_first"),
                "contact_last": p.get("contact_last"), "phone": p.get("phone"), "email": p.get("email"),
-               "source": p.get("source") or "CSV Import", "source_details": job["filename"],
+               "source": imp_source or p.get("source") or "CSV Import", "source_details": job["filename"],
+               "collected_year": data_year,
                "status": "New", "priority": "Medium", "tags": ["imported"],
                "lead_manager_id": user["id"], "account_manager_id": None,
                "specialty": p.get("specialty") or (snap or {}).get("specialty"),
@@ -255,12 +280,19 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                                    "by_name": user.get("name"), "reason": "Imported", "at": now_iso()}]}
         await db.crm_leads.insert_one(dict(doc))
         await log_activity(lead_id, activity("import", user, f"Imported from {job['filename']}"))
-        # Bulk-imported leads auto-route: territory match, else round-robin.
-        try:
-            from routes_teams import auto_route_lead
-            await auto_route_lead(doc, user, source_kind="bulk")
-        except Exception:
-            pass
+        # Assign: equal round-robin across the pool, or territory routing with rr fallback.
+        if distribute == "equal" and pool:
+            am_id, am_name = pool[rr_idx % len(pool)]
+            rr_idx += 1
+            await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+                "account_manager_id": am_id, "account_manager_name": am_name,
+                "routing_reason": "Distributed equally on import", "routed_at": now_iso()}})
+        else:
+            try:
+                from routes_teams import auto_route_lead
+                await auto_route_lead(doc, user, source_kind="bulk")
+            except Exception:
+                pass
         created_ids.append(lead_id)
         created += 1
     counts = {"created": created, "updated": updated, "skipped": skipped}

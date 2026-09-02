@@ -279,6 +279,7 @@ export default function LeadDetail() {
             </Field>
             <div className="grid grid-cols-2 gap-2 text-sm text-slate-500">
               <div><p className="text-xs uppercase text-slate-400">Source</p>{lead.source}</div>
+              {lead.collected_year ? <div data-testid="ld-collected-year"><p className="text-xs uppercase text-slate-400">Data year</p>{lead.collected_year}</div> : null}
               <div><p className="text-xs uppercase text-slate-400">Priority</p>{lead.priority}</div>
               <div><p className="text-xs uppercase text-slate-400">Created by</p>{lead.created_by_name}</div>
               <div><p className="text-xs uppercase text-slate-400">Created</p>{fmtDate(lead.created_at)}</div>

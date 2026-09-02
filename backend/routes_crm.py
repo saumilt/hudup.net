@@ -18,10 +18,41 @@ ANY_CRM = require_roles(ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF)
 MANAGER = require_roles(ROLE_LEAD_MANAGER)
 
 
+DEFAULT_LEAD_SOURCES = list(dict.fromkeys(list(LEAD_SOURCES) + ["Data Scraping", "Gujarati Physicians Event"]))
+
+
+async def _all_sources() -> list[str]:
+    docs = await db.lead_sources.find({}, {"_id": 0, "name": 1}).sort("name", 1).to_list(500)
+    if not docs:
+        await db.lead_sources.insert_many([{"id": str(uuid.uuid4()), "name": n} for n in DEFAULT_LEAD_SOURCES])
+        return DEFAULT_LEAD_SOURCES
+    return [d["name"] for d in docs]
+
+
 @router.get("/meta")
 async def meta(user=Depends(ANY_CRM)):
-    return {"statuses": LEAD_STATUSES, "sources": LEAD_SOURCES,
+    return {"statuses": LEAD_STATUSES, "sources": await _all_sources(),
             "priorities": PRIORITIES, "opp_stages": DEFAULT_OPP_STAGES}
+
+
+@router.get("/lead-sources")
+async def list_sources(user=Depends(ANY_CRM)):
+    return await _all_sources()
+
+
+class SourceInput(BaseModel):
+    name: str
+
+
+@router.post("/lead-sources")
+async def add_source(data: SourceInput, user=Depends(ANY_CRM)):
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Source name required")
+    existing = await _all_sources()
+    if not any(n.lower() == name.lower() for n in existing):
+        await db.lead_sources.insert_one({"id": str(uuid.uuid4()), "name": name})
+    return {"ok": True, "name": name, "sources": await _all_sources()}
 
 
 def _lead_scope(user: dict) -> dict:
@@ -42,6 +73,7 @@ class LeadInput(BaseModel):
     email: str | None = None
     source: str = "Manual Entry"
     source_details: str | None = None
+    collected_year: int | None = None
     priority: str = "Medium"
     tags: list[str] = []
     est_value: float | None = None
@@ -94,6 +126,7 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
         "org_name": data.org_name, "contact_first": data.contact_first,
         "contact_last": data.contact_last, "phone": data.phone, "email": data.email,
         "source": data.source, "source_details": data.source_details,
+        "collected_year": data.collected_year,
         "status": "New", "priority": data.priority, "tags": data.tags,
         "lead_manager_id": data.lead_manager_id, "account_manager_id": data.account_manager_id,
         "est_value": data.est_value, "qualification_notes": data.qualification_notes,
