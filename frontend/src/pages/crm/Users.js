@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Field, inputCls, Modal, fmtDate } from "@/components/crm/kit";
-import { Plus, KeyRound, Mail, Copy, CheckCircle2, Send, Pencil, Trash2, History } from "lucide-react";
+import { Plus, KeyRound, Mail, Copy, CheckCircle2, Send, Pencil, Trash2, History, Power, Ban } from "lucide-react";
 
 const ROLE_BADGE = {
   admin: "bg-slate-900 text-white", lead_manager: "bg-indigo-100 text-indigo-700",
@@ -92,7 +92,12 @@ export default function Users() {
   };
 
   const changeRole = async (id, role) => { await api.patch(`/users/${id}`, { role }); toast.success("Role updated"); load(); };
-  const toggleActive = async (id, active) => { await api.patch(`/users/${id}`, { active }); load(); };
+  const toggleActiveConfirm = async (usr) => {
+    const newActive = usr.active === false; // inactive -> activate; active -> deactivate
+    if (!newActive && !window.confirm(`Deactivate ${usr.name || usr.email}? They won't be able to sign in, but all their leads and history are kept. You can reactivate them anytime.`)) return;
+    try { await api.patch(`/users/${usr.id}`, { active: newActive }); toast.success(newActive ? "User reactivated" : "User deactivated"); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const resetPin = async (id) => { const pin = window.prompt("New PIN (4-8 digits)"); if (!pin) return; try { await api.post(`/users/${id}/reset-pin`, { pin }); toast.success("PIN reset"); } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } };
 
   return (
@@ -105,11 +110,11 @@ export default function Users() {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-              <tr><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3">Active</th><th className="p-3"></th></tr>
+              <tr><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3"></th></tr>
             </thead>
             <tbody>
               {users.map((usr) => (
-                <tr key={usr.id} data-testid={`user-row-${usr.id}`} className="border-t border-slate-100">
+                <tr key={usr.id} data-testid={`user-row-${usr.id}`} className={`border-t border-slate-100 ${usr.active === false ? "opacity-60" : ""}`}>
                   <td className="p-3 font-semibold text-slate-800">{usr.name}{usr.title ? <span className="ml-1 text-xs text-slate-400">· {usr.title}</span> : null}</td>
                   <td className="p-3 text-slate-600">{usr.email}</td>
                   <td className="p-3 text-slate-500">{usr.phone || <span className="text-slate-300">—</span>}</td>
@@ -119,16 +124,18 @@ export default function Users() {
                     </select>
                   </td>
                   <td className="p-3">
-                    {usr.must_change_pin
-                      ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Invite pending</span>
-                      : <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">Active</span>}
+                    {usr.active === false
+                      ? <span data-testid={`user-status-${usr.id}`} className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">Inactive</span>
+                      : usr.must_change_pin
+                        ? <span data-testid={`user-status-${usr.id}`} className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Invite pending</span>
+                        : <span data-testid={`user-status-${usr.id}`} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">Active</span>}
                   </td>
-                  <td className="p-3"><input type="checkbox" checked={usr.active !== false} onChange={(e) => toggleActive(usr.id, e.target.checked)} data-testid={`user-active-${usr.id}`} /></td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => openEdit(usr)} data-testid={`user-edit-${usr.id}`} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" /> Edit</button>
                       <button onClick={() => sendInvite(usr)} data-testid={`user-invite-${usr.id}`} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"><Send className="h-3.5 w-3.5" /> Invite</button>
                       <button onClick={() => resetPin(usr.id)} data-testid={`user-resetpin-${usr.id}`} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"><KeyRound className="h-3.5 w-3.5" /> Reset PIN</button>
+                      <button onClick={() => toggleActiveConfirm(usr)} data-testid={`user-toggle-active-${usr.id}`} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${usr.active === false ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}>{usr.active === false ? <><Power className="h-3.5 w-3.5" /> Activate</> : <><Ban className="h-3.5 w-3.5" /> Deactivate</>}</button>
                       <button onClick={() => removeUser(usr)} data-testid={`user-delete-${usr.id}`} className="flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
                     </div>
                   </td>

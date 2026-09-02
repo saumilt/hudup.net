@@ -6,6 +6,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.15 (2026-06) — Deactivate (soft-disable) UX + Sam PIN rotation
+- **Deactivate vs Delete**: login already rejects `active:false` accounts with 403 "Account is deactivated" (verified). Added a clear **Deactivate / Activate** button per user row (confirm on deactivate) and an **Inactive** status badge (rows dim when inactive); removed the ambiguous Active checkbox. Deactivating blocks sign-in but keeps all leads/history, and is captured in the audit trail (update → changed:["active"]). Verified: user could log in, then got 403 after deactivate.
+- **Sam PIN rotated** to **8677** via env `SUPER_ADMIN_PIN` (old 729164 now rejected; new PIN works; still super_admin, no forced change). Takes effect in production after re-Publish.
+- Version → **v2.15**.
+
+
 ## v2.14 (2026-06) — Baked-in super admin + reassign-on-delete + user audit trail
 - **Permanent built-in super admin**: `server.py` seed now creates/repairs `sam@healthandmore.net` as **super_admin** on every startup from env (`SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PIN=729164` / `SUPER_ADMIN_NAME`), idempotent via the shared `_seed_user` (extended with `enforce_role`), and clears `must_change_pin` so the env PIN is a stable credential (no forced change; reverts to env PIN on restart). This exists in EVERY deploy incl. production. (admin seeding — ran integration_expert first.)
 - **Reassign on delete**: `DELETE /api/users/{id}?reassign_to=<uid>` moves the deleted rep's leads (all owned) + open opportunities to the target rep (leads get `routing_reason` "Reassigned from <name> (account removed)"). New `GET /api/users/{id}/workload` → `{leads, open_opps}`. Frontend: delete now checks workload and, if non-zero, opens a "Reassign & Delete" modal to pick the target rep before deleting.
