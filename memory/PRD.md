@@ -6,6 +6,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.13 (2026-06) — Admin user management: edit attributes + delete
+- Admins/super_admins can now **edit** any user's **name, email, phone, title, role** and **delete** users from `/crm/users`. Backend: `routes_users.py` — `PATCH /api/users/{id}` extended with `email` (lowercased + uniqueness check) and `phone`; new `DELETE /api/users/{id}` with guards (cannot delete your own account; cannot delete the last remaining admin/super_admin). `create_user` and `_public` now carry `phone`. Frontend `Users.js`: added a Phone column, per-row **Edit** (modal: name/title/email/phone/role) and **Delete** (confirm) buttons.
+- Verified via curl (email lowercased, phone set, duplicate-email guard, delete, self-delete guard) + UI screenshot. Version → **v2.13**.
+- NOTE — production accounts: preview and prod are SEPARATE DBs; first deploy provisions a fresh prod DB (no preview data copied). The app's startup seed (`server.py _seed_user`, from env vars) always creates/repairs these in every env: admin@boothiq.com/482913 (admin), leadmanager@boothiq.com/639201, accountmanager@boothiq.com/528174, staff@boothiq.com/715264. Team accounts (healthandmore.net etc.) exist only where created in-app; create them in production via /crm/users after logging in as admin@boothiq.com.
+
+
 ## v2.12 (2026-06) — Rebalance + distribution history + AM filter; Browser Calling (gated OFF)
 - **Rebalance ("Even out")**: `POST /api/crm/routing/rebalance` (lead_manager) moves surplus **unworked** leads (status New, not converted, created this month) from the busiest account manager to the quietest until this-month spread ≤ 1. Bounded/idempotent (returns `{ok, moved}`); rebalanced leads get `routing_reason` "Rebalanced — moved from <name> to even out load". "Even out" button on the Teams distribution panel.
 - **Distribution history**: `GET /api/crm/routing/balance` now returns per-rep `prev` (last month) alongside `leads` (this month) + `prev_total`; the Teams panel shows this-month (primary) vs last-month (gray) bars.

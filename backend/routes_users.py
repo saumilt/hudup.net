@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/users")
 def _public(u: dict) -> dict:
     return {
         "id": u["id"], "email": u["email"], "name": u["name"], "role": u["role"],
-        "title": u.get("title"), "active": u.get("active", True),
+        "title": u.get("title"), "phone": u.get("phone"), "active": u.get("active", True),
         "must_change_pin": u.get("must_change_pin", False),
         "created_at": u.get("created_at"),
     }
@@ -117,6 +117,7 @@ class CreateUserInput(BaseModel):
     name: str
     role: str
     title: str | None = None
+    phone: str | None = None
     send_invite: bool = True
 
 
@@ -138,7 +139,8 @@ async def create_user(data: CreateUserInput, admin=Depends(require_admin)):
     doc = {
         "id": str(uuid.uuid4()), "email": email, "pin_hash": hash_pin(pin),
         "name": data.name.strip(), "role": data.role, "title": data.title,
-        "active": True, "must_change_pin": temp, "created_at": now_iso(),
+        "phone": data.phone, "active": True, "must_change_pin": temp,
+        "created_at": now_iso(),
     }
     await db.users.insert_one(dict(doc))
     invite_sent = False
@@ -167,6 +169,8 @@ async def resend_invite(user_id: str, admin=Depends(require_admin)):
 
 class UpdateUserInput(BaseModel):
     name: str | None = None
+    email: str | None = None
+    phone: str | None = None
     role: str | None = None
     title: str | None = None
     active: bool | None = None
@@ -177,6 +181,14 @@ async def update_user(user_id: str, data: UpdateUserInput, admin=Depends(require
     patch = {k: v for k, v in data.dict().items() if v is not None}
     if "role" in patch and patch["role"] not in ALL_ROLES:
         raise HTTPException(400, "Invalid role")
+    if "email" in patch:
+        email = patch["email"].strip().lower()
+        if not email or "@" not in email:
+            raise HTTPException(400, "Enter a valid email address")
+        dup = await db.users.find_one({"email": email, "id": {"$ne": user_id}}, {"_id": 0, "id": 1})
+        if dup:
+            raise HTTPException(400, "A user with that email already exists")
+        patch["email"] = email
     if not patch:
         return {"ok": True}
     r = await db.users.update_one({"id": user_id}, {"$set": patch})
@@ -184,6 +196,21 @@ async def update_user(user_id: str, data: UpdateUserInput, admin=Depends(require
         raise HTTPException(404, "User not found")
     u = await db.users.find_one({"id": user_id}, {"_id": 0, "pin_hash": 0})
     return _public(u)
+
+
+@router.delete("/{user_id}")
+async def delete_user(user_id: str, admin=Depends(require_admin)):
+    if user_id == admin["id"]:
+        raise HTTPException(400, "You cannot delete your own account")
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(404, "User not found")
+    if user.get("role") in ("admin", "super_admin"):
+        admins = await db.users.count_documents({"role": {"$in": ["admin", "super_admin"]}})
+        if admins <= 1:
+            raise HTTPException(400, "Cannot delete the last admin account")
+    await db.users.delete_one({"id": user_id})
+    return {"ok": True, "deleted": user_id, "email": user.get("email")}
 
 
 class ResetPinInput(BaseModel):
