@@ -21,6 +21,18 @@ def _public(u: dict) -> dict:
     }
 
 
+async def _audit(actor: dict, action: str, target: dict, details: dict | None = None):
+    """Record an admin action on a user account for the audit trail."""
+    entry = {
+        "id": str(uuid.uuid4()), "at": now_iso(),
+        "actor_id": (actor or {}).get("id"), "actor_name": (actor or {}).get("name"),
+        "action": action, "target_id": target.get("id"),
+        "target_email": target.get("email"), "target_name": target.get("name"),
+        "details": details or {},
+    }
+    await db.user_audit.insert_one(dict(entry))
+
+
 def _gen_temp_pin() -> str:
     return "".join(secrets.choice("0123456789") for _ in range(6))
 
@@ -111,6 +123,18 @@ async def roles():
     return [{"value": r, "label": ROLE_LABELS[r]} for r in ALL_ROLES]
 
 
+@router.get("/audit")
+async def user_audit(admin=Depends(require_admin)):
+    return await db.user_audit.find({}, {"_id": 0}).sort("at", -1).to_list(100)
+
+
+@router.get("/{user_id}/workload")
+async def user_workload(user_id: str, admin=Depends(require_admin)):
+    leads = await db.crm_leads.count_documents({"account_manager_id": user_id})
+    open_opps = await db.crm_opportunities.count_documents({"owner_id": user_id, "status": "open"})
+    return {"leads": leads, "open_opps": open_opps}
+
+
 class CreateUserInput(BaseModel):
     email: str
     pin: str | None = None
@@ -143,6 +167,7 @@ async def create_user(data: CreateUserInput, admin=Depends(require_admin)):
         "created_at": now_iso(),
     }
     await db.users.insert_one(dict(doc))
+    await _audit(admin, "created", doc, {"role": doc["role"]})
     invite_sent = False
     if temp and data.send_invite:
         invite_sent = await _send_invite(doc["name"], email, pin, data.role)
@@ -164,6 +189,7 @@ async def resend_invite(user_id: str, admin=Depends(require_admin)):
     await db.users.update_one({"id": user_id}, {"$set": {
         "pin_hash": hash_pin(pin), "must_change_pin": True}})
     invite_sent = await _send_invite(user.get("name"), user["email"], pin, user.get("role"))
+    await _audit(admin, "invited", user)
     return {"ok": True, "invite_sent": invite_sent, "temp_pin": pin}
 
 
@@ -195,11 +221,12 @@ async def update_user(user_id: str, data: UpdateUserInput, admin=Depends(require
     if r.matched_count == 0:
         raise HTTPException(404, "User not found")
     u = await db.users.find_one({"id": user_id}, {"_id": 0, "pin_hash": 0})
+    await _audit(admin, "updated", u, {"changed": list(patch.keys())})
     return _public(u)
 
 
 @router.delete("/{user_id}")
-async def delete_user(user_id: str, admin=Depends(require_admin)):
+async def delete_user(user_id: str, reassign_to: str | None = None, admin=Depends(require_admin)):
     if user_id == admin["id"]:
         raise HTTPException(400, "You cannot delete your own account")
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
@@ -209,8 +236,24 @@ async def delete_user(user_id: str, admin=Depends(require_admin)):
         admins = await db.users.count_documents({"role": {"$in": ["admin", "super_admin"]}})
         if admins <= 1:
             raise HTTPException(400, "Cannot delete the last admin account")
+    leads_moved, opps_moved = 0, 0
+    if reassign_to:
+        target = await db.users.find_one({"id": reassign_to}, {"_id": 0, "id": 1, "name": 1})
+        if not target:
+            raise HTTPException(400, "Reassignment target not found")
+        r1 = await db.crm_leads.update_many({"account_manager_id": user_id}, {"$set": {
+            "account_manager_id": reassign_to, "account_manager_name": target.get("name"),
+            "routing_reason": f"Reassigned from {user.get('name')} (account removed)",
+            "routed_at": now_iso()}})
+        leads_moved = r1.modified_count
+        r2 = await db.crm_opportunities.update_many(
+            {"owner_id": user_id, "status": "open"}, {"$set": {"owner_id": reassign_to}})
+        opps_moved = r2.modified_count
     await db.users.delete_one({"id": user_id})
-    return {"ok": True, "deleted": user_id, "email": user.get("email")}
+    await _audit(admin, "deleted", user,
+                 {"reassigned_to": reassign_to, "leads_moved": leads_moved, "open_opps_moved": opps_moved})
+    return {"ok": True, "deleted": user_id, "email": user.get("email"),
+            "leads_moved": leads_moved, "open_opps_moved": opps_moved}
 
 
 class ResetPinInput(BaseModel):
@@ -226,4 +269,6 @@ async def reset_pin(user_id: str, data: ResetPinInput, admin=Depends(require_adm
         "pin_hash": hash_pin(data.pin), "must_change_pin": False}})
     if r.matched_count == 0:
         raise HTTPException(404, "User not found")
+    tgt = await db.users.find_one({"id": user_id}, {"_id": 0, "id": 1, "email": 1, "name": 1})
+    await _audit(admin, "pin_reset", tgt or {"id": user_id})
     return {"ok": True}

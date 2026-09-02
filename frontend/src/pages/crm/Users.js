@@ -2,8 +2,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
-import { Btn, Field, inputCls, Modal } from "@/components/crm/kit";
-import { Plus, KeyRound, Mail, Copy, CheckCircle2, Send, Pencil, Trash2 } from "lucide-react";
+import { Btn, Field, inputCls, Modal, fmtDate } from "@/components/crm/kit";
+import { Plus, KeyRound, Mail, Copy, CheckCircle2, Send, Pencil, Trash2, History } from "lucide-react";
 
 const ROLE_BADGE = {
   admin: "bg-slate-900 text-white", lead_manager: "bg-indigo-100 text-indigo-700",
@@ -20,6 +20,10 @@ export default function Users() {
   const [invite, setInvite] = useState(null); // {name, email, temp_pin, invite_sent}
   const [edit, setEdit] = useState(null); // user being edited
   const [savingEdit, setSavingEdit] = useState(false);
+  const [del, setDel] = useState(null); // {user, workload, reassignTo}
+  const [savingDel, setSavingDel] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
+  const [audit, setAudit] = useState(null);
 
   const load = useCallback(async () => { const r = await api.get("/users"); setUsers(r.data); }, []);
   useEffect(() => { load(); api.get("/users/roles").then((r) => setRoles(r.data)).catch(() => {}); }, [load]);
@@ -57,10 +61,26 @@ export default function Users() {
     finally { setSavingEdit(false); }
   };
   const removeUser = async (usr) => {
-    if (!window.confirm(`Delete ${usr.name || usr.email}? This permanently removes their account.`)) return;
-    try { await api.delete(`/users/${usr.id}`); toast.success("User deleted"); load(); }
-    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    try {
+      const w = await api.get(`/users/${usr.id}/workload`);
+      if ((w.data.leads || 0) > 0 || (w.data.open_opps || 0) > 0) {
+        setDel({ user: usr, workload: w.data, reassignTo: "" });
+      } else if (window.confirm(`Delete ${usr.name || usr.email}? This permanently removes their account.`)) {
+        await api.delete(`/users/${usr.id}`); toast.success("User deleted"); load();
+      }
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const confirmDelete = async () => {
+    setSavingDel(true);
+    try {
+      const params = del.reassignTo ? { reassign_to: del.reassignTo } : {};
+      const r = await api.delete(`/users/${del.user.id}`, { params });
+      toast.success(r.data.leads_moved ? `Deleted · ${r.data.leads_moved} lead(s) reassigned` : "User deleted");
+      setDel(null); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    finally { setSavingDel(false); }
+  };
+  const openAudit = async () => { setShowAudit(true); setAudit(null); try { const r = await api.get("/users/audit"); setAudit(r.data); } catch { setAudit([]); } };
 
   const sendInvite = async (usr) => {
     if (!window.confirm(`Send a new temporary PIN invite to ${usr.email}?`)) return;
@@ -78,6 +98,7 @@ export default function Users() {
   return (
     <div>
       <PageHeader title="Users & Roles" subtitle="Invite team members and assign CRM roles">
+        <Btn variant="ghost" onClick={openAudit} data-testid="audit-open"><History className="h-4 w-4" /> Audit trail</Btn>
         <Btn onClick={() => { resetForm(); setShow(true); }} data-testid="user-new"><Plus className="h-4 w-4" /> New User</Btn>
       </PageHeader>
       <div className="p-6">
@@ -150,6 +171,43 @@ export default function Users() {
             </div>
             <Btn onClick={saveEdit} disabled={savingEdit} data-testid="edit-save" className="mt-3 w-full justify-center">{savingEdit ? "Saving…" : "Save Changes"}</Btn>
           </>
+        )}
+      </Modal>
+
+      {/* Reassign & delete */}
+      <Modal open={!!del} onClose={() => setDel(null)} title="Reassign & Delete">
+        {del && (
+          <div data-testid="reassign-modal">
+            <p className="text-sm text-slate-600"><b>{del.user.name || del.user.email}</b> owns <b>{del.workload.leads}</b> lead(s){del.workload.open_opps ? <> and <b>{del.workload.open_opps}</b> open opportunity(ies)</> : null}. Move them to another rep so nothing is orphaned, then delete.</p>
+            <Field label="Reassign to">
+              <select data-testid="reassign-target" value={del.reassignTo} onChange={(e) => setDel({ ...del, reassignTo: e.target.value })} className={inputCls}>
+                <option value="">Leave unassigned</option>
+                {users.filter((x) => x.id !== del.user.id && x.role === "account_manager").map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+            </Field>
+            <div className="mt-4 flex gap-2">
+              <Btn variant="ghost" onClick={() => setDel(null)}>Cancel</Btn>
+              <Btn variant="danger" onClick={confirmDelete} disabled={savingDel} data-testid="reassign-delete-confirm" className="ml-auto"><Trash2 className="h-4 w-4" /> {savingDel ? "Deleting…" : "Reassign & Delete"}</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Audit trail */}
+      <Modal open={showAudit} onClose={() => setShowAudit(false)} title="User Audit Trail" wide>
+        {!audit ? <p className="py-6 text-center text-slate-400">Loading…</p> : audit.length === 0 ? <p className="py-6 text-center text-slate-400">No audit entries yet.</p> : (
+          <ol data-testid="audit-list" className="max-h-96 space-y-2 overflow-y-auto pr-1">
+            {audit.map((a) => (
+              <li key={a.id} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-sm">
+                <p className="text-slate-700"><b className="capitalize">{(a.action || "").replace(/_/g, " ")}</b> · {a.target_name || a.target_email || a.target_id}</p>
+                <p className="text-xs text-slate-400">
+                  by {a.actor_name || "System"} · {fmtDate(a.at)}
+                  {a.details?.changed?.length ? ` · fields: ${a.details.changed.join(", ")}` : ""}
+                  {a.details?.leads_moved ? ` · ${a.details.leads_moved} lead(s) reassigned` : ""}
+                </p>
+              </li>
+            ))}
+          </ol>
         )}
       </Modal>
 

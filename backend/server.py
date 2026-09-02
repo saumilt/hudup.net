@@ -108,14 +108,20 @@ app.add_middleware(
 )
 
 
-async def _seed_user(email, pin, name, role):
+async def _seed_user(email, pin, name, role, enforce_role=False):
     existing = await db.users.find_one({"email": email})
     if not existing:
         await db.users.insert_one({
             "id": str(uuid.uuid4()), "email": email, "pin_hash": hash_pin(pin),
             "name": name, "role": role, "created_at": datetime.now(timezone.utc).isoformat()})
-    elif not verify_pin(pin, existing["pin_hash"]):
-        await db.users.update_one({"email": email}, {"$set": {"pin_hash": hash_pin(pin)}})
+        return
+    updates = {}
+    if not verify_pin(pin, existing["pin_hash"]):
+        updates["pin_hash"] = hash_pin(pin)
+    if enforce_role and existing.get("role") != role:
+        updates["role"] = role
+    if updates:
+        await db.users.update_one({"email": email}, {"$set": updates})
 
 
 DEFAULT_SEGMENTS = [
@@ -165,6 +171,13 @@ async def _run_init():
                      os.environ.get("LEAD_MANAGER_PIN", "639201"), "Lead Manager", "lead_manager")
     await _seed_user(os.environ.get("ACCOUNT_MANAGER_EMAIL", "accountmanager@boothiq.com"),
                      os.environ.get("ACCOUNT_MANAGER_PIN", "528174"), "Account Manager", "account_manager")
+    # Permanent built-in super admin (baked into every deploy via env vars).
+    if os.environ.get("SUPER_ADMIN_EMAIL") and os.environ.get("SUPER_ADMIN_PIN"):
+        await _seed_user(os.environ["SUPER_ADMIN_EMAIL"], os.environ["SUPER_ADMIN_PIN"],
+                         os.environ.get("SUPER_ADMIN_NAME", "Sam"), "super_admin", enforce_role=True)
+        # The env PIN is the stable credential — never force a change on this account.
+        await db.users.update_one({"email": os.environ["SUPER_ADMIN_EMAIL"]},
+                                  {"$set": {"must_change_pin": False}})
 
     # CRM indexes.
     await db.crm_leads.create_index("id", unique=True)
