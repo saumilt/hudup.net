@@ -13,7 +13,8 @@ export default function CallLists() {
   const [lists, setLists] = useState([]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [tier, setTier] = useState("GREEN");
+  const [tier, setTier] = useState("Any");
+  const [mine, setMine] = useState(true);
   const [active, setActive] = useState(null); // {id, current}
   const [dispo, setDispo] = useState("Connected");
   const [notes, setNotes] = useState("");
@@ -23,8 +24,17 @@ export default function CallLists() {
 
   const create = async () => {
     if (!name.trim()) return toast.error("Name required");
-    try { await api.post("/crm/call-lists", { name, filter: { tier_340b: tier } }); toast.success("Call list created"); setOpen(false); setName(""); load(); }
+    const filter = { ...(mine ? { mine: true } : {}), ...(tier && tier !== "Any" ? { tier_340b: tier } : {}) };
+    try { await api.post("/crm/call-lists", { name, filter }); toast.success("Call list created"); setOpen(false); setName(""); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const buildMyQueue = async () => {
+    try {
+      const r = await api.post("/crm/call-lists", { name: `My Call Queue — ${new Date().toLocaleDateString()}`, filter: { mine: true } });
+      if (!r.data.lead_ids.length) { toast.error("You have no assigned leads yet"); return; }
+      toast.success(`Queue built · ${r.data.lead_ids.length} leads (sorted by 340B/RPM tier)`);
+      load(); start(r.data.id);
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const start = useCallback(async (id) => {
     const r = await api.get(`/crm/call-lists/${id}/current`);
@@ -83,6 +93,7 @@ export default function CallLists() {
   return (
     <div>
       <PageHeader title="Smart Call Lists" subtitle="Focused calling queues that auto-advance">
+        <Btn variant="dark" onClick={buildMyQueue} data-testid="cl-my-queue"><PhoneCall className="h-4 w-4" /> My Call Queue</Btn>
         <Btn onClick={() => setOpen(true)} data-testid="cl-create-btn"><Plus className="h-4 w-4" /> New Call List</Btn>
       </PageHeader>
       <div className="space-y-3 p-6">
@@ -97,7 +108,9 @@ export default function CallLists() {
 
       <Modal open={open} onClose={() => setOpen(false)} title="New Call List">
         <Field label="Name"><input data-testid="cl-name" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></Field>
-        <Field label="Build from 340B tier"><select data-testid="cl-tier" value={tier} onChange={(e) => setTier(e.target.value)} className={inputCls}>{["GREEN", "YELLOW", "BLUE", "RED"].map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <label className="mb-2 flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" data-testid="cl-mine" checked={mine} onChange={(e) => setMine(e.target.checked)} /> My assigned leads only</label>
+        <Field label="340B tier"><select data-testid="cl-tier" value={tier} onChange={(e) => setTier(e.target.value)} className={inputCls}>{["Any", "GREEN", "YELLOW", "BLUE", "RED"].map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <p className="mb-2 text-xs text-slate-400">Leads are ordered by 340B then RPM tier automatically.</p>
         <Btn onClick={create} data-testid="cl-save" className="mt-2 w-full justify-center">Create</Btn>
       </Modal>
     </div>

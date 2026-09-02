@@ -193,6 +193,51 @@ async def resend_invite(user_id: str, admin=Depends(require_admin)):
     return {"ok": True, "invite_sent": invite_sent, "temp_pin": pin}
 
 
+class BulkUserInput(BaseModel):
+    user_ids: list[str]
+    action: str  # deactivate | activate | delete
+    reassign_to: str | None = None
+
+
+@router.post("/bulk")
+async def bulk_users(data: BulkUserInput, admin=Depends(require_admin)):
+    ids = [u for u in (data.user_ids or []) if u != admin["id"]]
+    if not ids:
+        raise HTTPException(400, "No users selected")
+    if data.action in ("deactivate", "activate"):
+        active = data.action == "activate"
+        r = await db.users.update_many({"id": {"$in": ids}}, {"$set": {"active": active}})
+        for uid in ids:
+            tgt = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1, "email": 1, "name": 1})
+            if tgt:
+                await _audit(admin, "updated", tgt, {"changed": ["active"], "bulk": True})
+        return {"ok": True, "count": r.modified_count, "action": data.action}
+    if data.action == "delete":
+        deleted, moved, skipped = 0, 0, 0
+        target = None
+        if data.reassign_to:
+            target = await db.users.find_one({"id": data.reassign_to}, {"_id": 0, "id": 1, "name": 1})
+        for uid in ids:
+            user = await db.users.find_one({"id": uid}, {"_id": 0})
+            if not user:
+                continue
+            if user.get("role") in ("admin", "super_admin"):
+                admins = await db.users.count_documents({"role": {"$in": ["admin", "super_admin"]}})
+                if admins <= 1:
+                    skipped += 1
+                    continue
+            if target:
+                rr = await db.crm_leads.update_many({"account_manager_id": uid}, {"$set": {
+                    "account_manager_id": target["id"], "account_manager_name": target.get("name"),
+                    "routing_reason": f"Reassigned from {user.get('name')} (bulk delete)", "routed_at": now_iso()}})
+                moved += rr.modified_count
+            await db.users.delete_one({"id": uid})
+            await _audit(admin, "deleted", user, {"bulk": True, "reassigned_to": data.reassign_to})
+            deleted += 1
+        return {"ok": True, "deleted": deleted, "leads_moved": moved, "skipped": skipped}
+    raise HTTPException(400, "Invalid action")
+
+
 class UpdateUserInput(BaseModel):
     name: str | None = None
     email: str | None = None

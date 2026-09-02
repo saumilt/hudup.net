@@ -22,7 +22,30 @@ export default function ImportWizard() {
   const [result, setResult] = useState(null); // {created, updated, skipped}
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.get("/crm/lead-sources").then((r) => setSources(r.data)).catch(() => {}); }, []);
+  const [presets, setPresets] = useState([]);
+  useEffect(() => {
+    api.get("/crm/lead-sources").then((r) => setSources(r.data)).catch(() => {});
+    api.get("/imports/presets").then((r) => setPresets(r.data)).catch(() => {});
+  }, []);
+  const applyPreset = (id) => {
+    const p = presets.find((x) => x.id === id);
+    if (!p) return;
+    setMapping(p.mapping || {});
+    if (p.source) setSource(p.source);
+    if (p.data_year) setYear(String(p.data_year));
+    setDistribute(p.distribute || "route");
+    setRule(p.rule || "safe");
+    toast.success(`Loaded preset "${p.name}"`);
+  };
+  const savePreset = async () => {
+    const name = window.prompt("Save this mapping as a preset named:");
+    if (!name || !name.trim()) return;
+    try {
+      await api.post("/imports/presets", { name: name.trim(), mapping, source, data_year: year ? Number(year) : null, distribute, rule });
+      const r = await api.get("/imports/presets"); setPresets(r.data);
+      toast.success("Preset saved");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const addSource = async () => {
     const name = window.prompt("New lead source name:");
@@ -111,6 +134,13 @@ export default function ImportWizard() {
               </table>
             </div>
             <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                <select data-testid="import-preset" defaultValue="" onChange={(e) => { if (e.target.value) { applyPreset(e.target.value); e.target.value = ""; } }} className={inputCls}>
+                  <option value="">Load a saved preset…</option>
+                  {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <Btn variant="ghost" type="button" onClick={savePreset} data-testid="import-save-preset">Save as preset</Btn>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Lead source</label>

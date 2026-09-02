@@ -143,6 +143,29 @@ async def save_mapping(import_id: str, data: MappingInput, user=Depends(IMPORTER
     return {"ok": True}
 
 
+class PresetInput(BaseModel):
+    name: str
+    mapping: dict
+    source: str | None = None
+    data_year: int | None = None
+    distribute: str = "route"
+    rule: str = "safe"
+
+
+@router.get("/presets")
+async def list_presets(user=Depends(IMPORTER)):
+    return await db.import_presets.find({}, {"_id": 0}).sort("name", 1).to_list(100)
+
+
+@router.post("/presets")
+async def save_preset(data: PresetInput, user=Depends(IMPORTER)):
+    doc = {"id": str(uuid.uuid4()), "name": data.name.strip(), "mapping": data.mapping,
+           "source": data.source, "data_year": data.data_year, "distribute": data.distribute,
+           "rule": data.rule, "created_by": user["id"], "created_at": now_iso()}
+    await db.import_presets.update_one({"name": doc["name"]}, {"$set": doc}, upsert=True)
+    return {"ok": True, "name": doc["name"]}
+
+
 def _project(row: dict, mapping: dict) -> dict:
     out = {}
     notes = []

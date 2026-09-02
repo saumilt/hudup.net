@@ -26,58 +26,93 @@ def _person_args(lead):
 async def _run_job(job_id, lead_ids):
     done = 0
     results = []
+    counts = {"enriched": 0, "no_match": 0, "error": 0}
     for lid in lead_ids:
         lead = await db.crm_leads.find_one({"id": lid}, {"_id": 0})
         if not lead:
+            done += 1
             continue
         try:
             r = await enrich_person(**_person_args(lead))
             await record_usage("enrichment", 1)
         except EnrichmentError as e:
-            if e.status == 404:
-                results.append({"lead_id": lid, "status": "no_match"})
-            else:
-                results.append({"lead_id": lid, "status": "error", "detail": e.message[:120]})
+            if e.status == 402:  # out of credits — stop the whole run safely
+                await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {
+                    "status": "stopped_credit_limit", "done": done, "counts": counts,
+                    "results": results[-200:], "finished_at": now_iso()}})
+                return
+            key = "no_match" if e.status == 404 else "error"
+            counts[key] += 1
+            results.append({"lead_id": lid, "status": key,
+                            "detail": None if e.status == 404 else e.message[:120]})
             done += 1
-            await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "results": results}})
+            await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "counts": counts, "results": results[-200:]}})
+            await asyncio.sleep(0.4)
             continue
         except Exception as e:  # noqa: BLE001
+            counts["error"] += 1
             results.append({"lead_id": lid, "status": "error", "detail": str(e)[:120]})
             done += 1
-            await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "results": results}})
+            await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "counts": counts, "results": results[-200:]}})
+            await asyncio.sleep(0.4)
             continue
         if r.get("matched") and r.get("confidence") == "HIGH":
             enr = lead.get("enrichment") or {}
-            applied = []
+            applied, top = [], {}
             for k, v in (r.get("fields") or {}).items():
                 if v and k not in enr:
                     enr[k] = provenance(v, "People Data Labs", "HIGH")
                     applied.append(k)
-            await db.crm_leads.update_one({"id": lid}, {"$set": {"enrichment": enr}})
+                    if k == "phone" and not lead.get("phone"):
+                        top["phone"] = v
+                    if k == "work_email" and not lead.get("email"):
+                        top["email"] = v
+            await db.crm_leads.update_one({"id": lid}, {"$set": {"enrichment": enr, **top}})
             await log_event("lead", lid, "enrichment", None,
                             f"Bulk enriched ({len(applied)} fields)", meta={"fields": applied})
+            counts["enriched"] += 1
             results.append({"lead_id": lid, "status": "enriched", "fields": applied})
         else:
+            counts["no_match"] += 1
             results.append({"lead_id": lid, "status": "no_match", "confidence": r.get("confidence")})
         done += 1
-        await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "results": results}})
-    await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"status": "completed", "finished_at": now_iso()}})
+        await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"done": done, "counts": counts, "results": results[-200:]}})
+        await asyncio.sleep(0.4)
+    await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"status": "completed", "counts": counts, "finished_at": now_iso()}})
 
 
 class BulkInput(BaseModel):
-    lead_ids: list[str]
+    lead_ids: list[str] | None = None
+    source: str | None = None
+    mine: bool = False
+    missing_phone: bool = True
+    limit: int | None = None
 
 
 @router.post("/bulk")
 async def bulk_enrich(data: BulkInput, user=Depends(MANAGER)):
-    if not data.lead_ids:
-        raise HTTPException(400, "No leads selected")
+    ids = data.lead_ids or []
+    if not ids:
+        q = {}
+        if data.source:
+            q["source"] = data.source
+        if data.mine:
+            q["account_manager_id"] = user["id"]
+        if data.missing_phone:
+            q["$or"] = [{"phone": None}, {"phone": ""}, {"phone": {"$exists": False}}]
+        rows = await db.crm_leads.find(q, {"_id": 0, "id": 1}).to_list(5000)
+        ids = [r["id"] for r in rows]
+    if data.limit:
+        ids = ids[:data.limit]
+    if not ids:
+        raise HTTPException(400, "No leads to enrich")
     job_id = str(uuid.uuid4())
     await db.enrichment_jobs.insert_one({
-        "id": job_id, "total": len(data.lead_ids), "done": 0, "status": "running",
-        "results": [], "created_by": user["id"], "created_at": now_iso()})
-    asyncio.create_task(_run_job(job_id, data.lead_ids))
-    return {"job_id": job_id, "total": len(data.lead_ids)}
+        "id": job_id, "total": len(ids), "done": 0, "status": "running",
+        "counts": {"enriched": 0, "no_match": 0, "error": 0}, "results": [],
+        "created_by": user["id"], "created_at": now_iso()})
+    asyncio.create_task(_run_job(job_id, ids))
+    return {"job_id": job_id, "total": len(ids)}
 
 
 @router.get("/{job_id}")

@@ -24,6 +24,22 @@ export default function Users() {
   const [savingDel, setSavingDel] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [audit, setAudit] = useState(null);
+  const [sel, setSel] = useState({});
+  const [bulkReassign, setBulkReassign] = useState("");
+  const selectedIds = () => Object.keys(sel).filter((k) => sel[k]);
+  const bulkAction = async (action) => {
+    const ids = selectedIds();
+    if (!ids.length) return;
+    if (action === "delete" && !window.confirm(`Delete ${ids.length} user(s)? Their leads reassign to the chosen rep (if any). The last admin is protected.`)) return;
+    if (action === "deactivate" && !window.confirm(`Deactivate ${ids.length} user(s)? They won't be able to sign in; history is kept.`)) return;
+    try {
+      const r = await api.post("/users/bulk", { user_ids: ids, action, reassign_to: action === "delete" && bulkReassign ? bulkReassign : null });
+      toast.success(action === "delete"
+        ? `Deleted ${r.data.deleted}${r.data.leads_moved ? ` · ${r.data.leads_moved} leads reassigned` : ""}${r.data.skipped ? ` · ${r.data.skipped} skipped` : ""}`
+        : `${r.data.count} user(s) ${action}d`);
+      setSel({}); setBulkReassign(""); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const load = useCallback(async () => { const r = await api.get("/users"); setUsers(r.data); }, []);
   useEffect(() => { load(); api.get("/users/roles").then((r) => setRoles(r.data)).catch(() => {}); }, [load]);
@@ -107,14 +123,29 @@ export default function Users() {
         <Btn onClick={() => { resetForm(); setShow(true); }} data-testid="user-new"><Plus className="h-4 w-4" /> New User</Btn>
       </PageHeader>
       <div className="p-6">
+        {selectedIds().length > 0 && (
+          <div data-testid="bulk-bar" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <span className="text-sm font-semibold text-slate-700">{selectedIds().length} selected</span>
+            <Btn variant="ghost" onClick={() => bulkAction("deactivate")} data-testid="bulk-deactivate"><Ban className="h-4 w-4" /> Deactivate</Btn>
+            <Btn variant="ghost" onClick={() => bulkAction("activate")} data-testid="bulk-activate"><Power className="h-4 w-4" /> Activate</Btn>
+            <div className="ml-auto flex items-center gap-2">
+              <select value={bulkReassign} onChange={(e) => setBulkReassign(e.target.value)} data-testid="bulk-reassign" className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+                <option value="">Reassign leads to… (optional)</option>
+                {users.filter((x) => x.role === "account_manager" && !sel[x.id]).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+              </select>
+              <Btn variant="danger" onClick={() => bulkAction("delete")} data-testid="bulk-delete"><Trash2 className="h-4 w-4" /> Delete</Btn>
+            </div>
+          </div>
+        )}
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-              <tr><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3"></th></tr>
+              <tr><th className="p-3"><input type="checkbox" data-testid="bulk-select-all" checked={users.length > 0 && users.every((x) => sel[x.id])} onChange={(e) => { const all = {}; if (e.target.checked) users.forEach((x) => { all[x.id] = true; }); setSel(all); }} /></th><th className="p-3">Name</th><th className="p-3">Email</th><th className="p-3">Phone</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3"></th></tr>
             </thead>
             <tbody>
               {users.map((usr) => (
                 <tr key={usr.id} data-testid={`user-row-${usr.id}`} className={`border-t border-slate-100 ${usr.active === false ? "opacity-60" : ""}`}>
+                  <td className="p-3"><input type="checkbox" checked={!!sel[usr.id]} onChange={(e) => setSel({ ...sel, [usr.id]: e.target.checked })} data-testid={`user-select-${usr.id}`} /></td>
                   <td className="p-3 font-semibold text-slate-800">{usr.name}{usr.title ? <span className="ml-1 text-xs text-slate-400">· {usr.title}</span> : null}</td>
                   <td className="p-3 text-slate-600">{usr.email}</td>
                   <td className="p-3 text-slate-500">{usr.phone || <span className="text-slate-300">—</span>}</td>

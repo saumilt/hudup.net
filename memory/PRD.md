@@ -6,6 +6,14 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.17 (2026-06) — Bulk enrich, My Call Queue, bulk user actions, import presets
+- **Bulk Enrich** (`routes_bulk.py`): the existing PDL bulk-enrich is now throttled (0.4s/call), stops early on credit-limit (402 → status `stopped_credit_limit`), mirrors found phone/work_email to the lead's top-level `phone`/`email` (so it's dialable), and accepts a filter (`source`/`mine`/`missing_phone`/`limit`) in addition to explicit `lead_ids`. Leads page fires it on selected rows and polls to a summary toast. NOTE: piloting 15 Data-Scraping leads returned 0 matches — PDL needs company/email, which the Medicare list lacks; do NOT bulk-run it on that dataset.
+- **My Call Queue** (`routes_growth.py`): call-list filter now supports `mine` (my assigned leads) + `source`, and results are always sorted by 340B then RPM tier (GREEN→YELLOW→BLUE→RED). CallLists page has a one-tap "My Call Queue" button + a "My assigned leads only" checkbox and an "Any" tier option.
+- **Bulk user actions** (`routes_users.py` `POST /users/bulk`): deactivate / activate / delete (with optional `reassign_to` for the deleted reps' leads); excludes self, protects the last admin, audited. Users page has row checkboxes + select-all + a bulk action bar.
+- **Import presets** (`routes_import.py` `GET/POST /imports/presets`): save the current mapping + source + year + distribution + rule as a named preset and load it in the wizard.
+- Verified: backend curl + testing agent iteration 17 (4/4 web e2e pass, no bugs). Version → **v2.17**.
+
+
 ## v2.16 (2026-06) — Managed lead sources + data-year tag + XLSX import + equal-distribution; 396-lead Medicare import
 - **Managed lead sources**: new `lead_sources` collection (lazy-seeded: Booth/Event, Manual Entry, Medicare Search, CSV Import, Referral, Website, Campaign, Other, **Data Scraping**, **Gujarati Physicians Event**). `GET/POST /api/crm/lead-sources`; `/api/crm/meta` now returns the managed list. Source is a dropdown + "+ Add" on the Import wizard and the New Lead form (add-anywhere, appears everywhere).
 - **Data-collected year**: `collected_year` on leads; set per-import and on the New Lead form; shown as "Data year" on the lead detail.

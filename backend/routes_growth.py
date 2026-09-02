@@ -56,6 +56,9 @@ async def delete_rule(rule_id: str, user=Depends(MANAGER)):
 
 
 # ==================== SMART CALL LISTS ====================
+TIER_RANK = {"GREEN": 0, "YELLOW": 1, "BLUE": 2, "RED": 3}
+
+
 class CallListInput(BaseModel):
     name: str
     lead_ids: list[str] = []
@@ -76,13 +79,20 @@ async def create_call_list(data: CallListInput, user=Depends(ANY_CRM)):
     lead_ids = data.lead_ids
     if data.filter and not lead_ids:
         q = {}
-        if data.filter.get("status"):
-            q["status"] = data.filter["status"]
-        if data.filter.get("tier_340b"):
-            q["medicare_snapshot.tier_340b"] = data.filter["tier_340b"]
-        if data.filter.get("state"):
-            q["state"] = data.filter["state"].upper()
-        rows = await db.crm_leads.find(q, {"_id": 0, "id": 1}).to_list(500)
+        f = data.filter
+        if f.get("status"):
+            q["status"] = f["status"]
+        if f.get("tier_340b"):
+            q["medicare_snapshot.tier_340b"] = f["tier_340b"]
+        if f.get("state"):
+            q["state"] = f["state"].upper()
+        if f.get("source"):
+            q["source"] = f["source"]
+        if f.get("mine"):
+            q["account_manager_id"] = user["id"]
+        rows = await db.crm_leads.find(q, {"_id": 0, "id": 1, "medicare_snapshot": 1}).to_list(2000)
+        rows.sort(key=lambda r: (TIER_RANK.get((r.get("medicare_snapshot") or {}).get("tier_340b"), 9),
+                                 TIER_RANK.get((r.get("medicare_snapshot") or {}).get("tier_rpm"), 9)))
         lead_ids = [r["id"] for r in rows]
     doc = {"id": str(uuid.uuid4()), "name": data.name, "lead_ids": lead_ids, "cursor": 0,
            "owner_id": user["id"], "created_at": now_iso()}

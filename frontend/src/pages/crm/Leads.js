@@ -47,8 +47,22 @@ export default function Leads() {
     if (!ids.length) return toast.error("Select leads to enrich");
     try {
       const r = await api.post("/crm/enrichment/bulk", { lead_ids: ids });
-      toast.success(`Enriching ${r.data.total} lead(s) in the background — fills missing fields only`);
       setSel({});
+      toast.success(`Enriching ${r.data.total} lead(s) in the background…`);
+      const jobId = r.data.job_id;
+      const poll = setInterval(async () => {
+        try {
+          const s = await api.get(`/crm/enrichment/${jobId}`);
+          const d = s.data;
+          if (d.status !== "running") {
+            clearInterval(poll);
+            const c = d.counts || {};
+            if (d.status === "stopped_credit_limit") toast.error("Enrichment stopped — PeopleDataLabs credit limit reached");
+            else toast.success(`Enrichment done — ${c.enriched || 0} enriched, ${c.no_match || 0} no match`);
+            load();
+          }
+        } catch { clearInterval(poll); }
+      }, 3000);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const bulkEnroll = async () => {
@@ -129,7 +143,7 @@ export default function Leads() {
                 const snap = l.medicare_snapshot || {};
                 return (
                   <tr key={l.id} data-testid={`lead-row-${l.id}`} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => nav(`/crm/leads/${l.id}`)}>
-                    {isManager && <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} /></td>}
+                    {isManager && <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} data-testid={`lead-select-${l.id}`} /></td>}
                     <td className="p-3 font-mono text-xs text-slate-500">{l.lead_number}</td>
                     <td className="p-3"><span className="font-semibold text-slate-800">{l.org_name || `${l.contact_first || ""} ${l.contact_last || ""}`.trim() || "—"}</span><br /><span className="text-xs text-slate-400">{l.email || l.phone || ""}</span></td>
                     <td className="p-3"><StatusBadge status={l.status} /></td>

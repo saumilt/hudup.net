@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 17 — v2.17 web-frontend validation for BoothIQ CRM. All 4 requested features verified end-to-end via Playwright at REACT_APP_BACKEND_URL. (1) Users & Roles bulk operations: created 2 throwaway account_manager users, verified bulk-bar appears on row selection, bulk-deactivate flipped both to Inactive (toast '2 user(s) deactivated'), bulk-activate flipped back to Active (toast '2 user(s) activated'), bulk-delete removed both rows (toast 'Deleted 2'), and bulk-select-all checked 12/12 remaining rows. (2) Call Lists as account_manager: cl-my-queue built a 143-lead queue (toast 'Queue built · 143 leads (sorted by 340B/RPM tier)') and auto-started calling with L-00001 Acme Cardiology showing 340B GREEN first; New Call List modal exposed cl-mine checkbox and cl-tier dropdown containing ['Any','GREEN','YELLOW','BLUE','RED']; a TESTQ_* list with mine+Any was created (143 leads) and Start Calling opened queue-card with a GREEN-tier first lead. (3) Import wizard: uploaded /tmp/import_sample.csv, reached Map Columns step; all 7 required testIDs present (import-source, import-add-source, import-year, import-rule, import-distribute, import-preset, import-save-preset); 'Medicare Scrape' preset already in dropdown; saved a new preset TestPreset_<ts> via window.prompt, dropdown updated, mutating year/rule/distribute then selecting the new preset re-applied year=2026, rule=refresh, distribute=equal (toast 'Loaded preset ...'). (4) Bulk Enrich on Leads: selected exactly 1 lead-row checkbox, clicked bulk-enrich-btn, POST /api/crm/enrichment/bulk → 200 with response {total:1, done:1, status:'completed', counts:{enriched:0, no_match:1}} and dual toast 'Enriching 1 lead(s) in the background…' + 'Enrichment done — 0 enriched, 1 no match'. No red screens, no console errors observed.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    },
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/test_reports/iteration_17.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Leads.js:146 — lead-row selection checkbox has no data-testid (only the row has lead-row-<id>). Tests must reach into the row's first td to find the input[type=checkbox]. Consider adding data-testid=`lead-select-${l.id}` for parity with Users.js user-select-<id>.",
+    "ImportWizard.js:41 savePreset — uses window.prompt() for the preset name. Works but breaks headless environments without a dialog handler; consider a controlled Modal + input for better UX and testability.",
+    "Users.js:33-34 — deactivate/delete guarded by window.confirm(); fine but not testable without page.on('dialog'). Non-blocking.",
+    "CallLists.js:96 — 'cl-my-queue' one-tap builds+starts the queue AND auto-navigates to /crm/call-lists/<id>/queue. The 143 tier-sorted leads returned by /api/crm/call-lists/mine-queue match the expected AM assignment. GREEN-first ordering confirmed by first card (L-00001, 340B GREEN).",
+    "ImportWizard.js:30-39 applyPreset — nice: resets year/rule/distribute defaults if the saved preset omits them, so mixed old/new presets won't leave stale state. But note: `distribute || 'route'` and `rule || 'safe'` overwrite user-set values even if the preset intentionally didn't include them — currently OK since save always writes both.",
+    "routes_bulk.py bulk-enrich returned the completed job synchronously (total:1, done:1, status:'completed') within ~1s for a single lead. This matches PDL throttle for tiny jobs; toast copy 'Enriching 1 lead(s) in the background…' is emitted client-side before the request resolves, then a completion toast follows — good UX pattern."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_17.json"
+  ],
+  "success_rate": {"backend": "n/a (frontend-only run; API calls observed 200)", "frontend": "100% (4/4 features)"},
+  "test_credentials": "Used admin@boothiq.com / 482913 (Users bulk, Import presets, Bulk enrich) and accountmanager@boothiq.com / 528174 (My Call Queue — confirmed 143 assigned leads) from /app/memory/test_credentials.md.",
+  "seed_data_creation": "Created 2 throwaway account_manager users (Throwaway User 1/2 <ts>@test.local, PIN 999888) then deleted via bulk-delete — no residual data. Created 1 call-list 'TESTQ_<ts>' owned by accountmanager (143 leads) — not cleaned up but harmless. Saved 1 import preset 'TestPreset_<ts>' — persists in /imports/presets alongside 'Medicare Scrape'. One lead (L-* first row) went through PDL bulk-enrich returning no_match (expected — Medicare scrape has no company/email for PDL to match).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "v2.17 UI testIDs stable and match code: Users → user-new, user-select-<id>, bulk-bar, bulk-deactivate, bulk-activate, bulk-reassign, bulk-delete, bulk-select-all, user-status-<id>. CallLists → cl-my-queue, cl-create-btn, cl-name, cl-mine, cl-tier (options: Any/GREEN/YELLOW/BLUE/RED), cl-save, cl-card, cl-start, queue-card, queue-dispo, queue-notes, queue-save-next. ImportWizard → import-file, import-upload, import-preset, import-save-preset (uses window.prompt), import-source, import-add-source, import-year, import-rule, import-distribute, import-validate. Leads → bulk-enrich-btn, lead-row-<id> (NOTE: row checkbox has no data-testid — reach via `tr[data-testid^=lead-row-] input[type=checkbox]`). Bulk-enrich POSTs /api/crm/enrichment/bulk and returns full job body synchronously for small batches. Toast strings: 'Enriching {n} lead(s) in the background…', 'Enrichment done — {enriched} enriched, {no_match} no match', 'Queue built · {n} leads (sorted by 340B/RPM tier)', 'Loaded preset \"{name}\"', 'Preset saved', 'Deleted {n}', '{n} user(s) deactivated|activated'. Medicare Scrape preset present in DB. Do NOT bulk-enrich many Medicare-scraped leads (0% match rate, wastes PDL credits).",
+  "rca of the issue": "N/A — no bugs found. All 4 v2.17 features (Bulk Enrich, My Call Queue + New Call List filter, Users & Roles bulk actions, Import Presets) match PRD and backend contracts previously validated by main agent."
+}
