@@ -1,10 +1,15 @@
 """Wave 6/7 — automation rules, smart call lists, data explorer."""
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from deps import db, require_roles
 from crm_common import now_iso, log_event
+
+
+def _today_start_iso() -> str:
+    return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 from automation import EVENTS, CONDITION_FIELDS, ACTION_TYPES
 
 router = APIRouter(prefix="/api/crm")
@@ -70,8 +75,19 @@ async def list_call_lists(user=Depends(ANY_CRM)):
     q = {} if user["role"] in ("admin", "lead_manager") else {"owner_id": user["id"]}
     lists = await db.call_lists.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
     for cl in lists:
-        cl["remaining"] = max(0, len(cl.get("lead_ids", [])) - cl.get("cursor", 0))
+        total = len(cl.get("lead_ids", []))
+        cursor = min(cl.get("cursor", 0), total)
+        cl["total"] = total
+        cl["called"] = cursor
+        cl["remaining"] = max(0, total - cursor)
     return lists
+
+
+@router.get("/call-stats/today")
+async def call_stats_today(user=Depends(ANY_CRM)):
+    """How many calls the current rep has logged today (across all leads)."""
+    count = await db.calls.count_documents({"by_id": user["id"], "at": {"$gte": _today_start_iso()}})
+    return {"calls_today": count}
 
 
 @router.post("/call-lists")

@@ -5,7 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { StatusBadge, PriorityTag, TierPill, Btn, Field, inputCls, EmptyState, Modal, fmtDate } from "@/components/crm/kit";
-import { Users2, Plus, UserCheck, Sparkles } from "lucide-react";
+import { Users2, Plus, UserCheck, Sparkles, Bookmark, Trash2 } from "lucide-react";
+
+const US_STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"];
+const EMPTY_FILTERS = { status: "", priority: "", match: "", q: "", mine: false, state: "", tier: "", source: "" };
 
 export default function Leads() {
   const { user } = useAuth();
@@ -13,7 +16,8 @@ export default function Leads() {
   const isManager = ["admin", "super_admin", "lead_manager"].includes(user?.role);
   const [meta, setMeta] = useState({ statuses: [], sources: [], priorities: [] });
   const [leads, setLeads] = useState([]);
-  const [filters, setFilters] = useState({ status: "", priority: "", match: "", q: "", mine: false });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [savedFilters, setSavedFilters] = useState([]);
   const [sel, setSel] = useState({});
   const [ams, setAms] = useState([]);
   const [assignTo, setAssignTo] = useState("");
@@ -27,6 +31,29 @@ export default function Leads() {
     api.get("/users", { params: { role: "account_manager" } }).then((r) => setAms(r.data)).catch(() => {});
     api.get("/crm/sequences").then((r) => setSeqs(r.data)).catch(() => {});
   }, []);
+
+  const loadSaved = useCallback(() => {
+    api.get("/crm/saved-searches", { params: { entity: "leads" } }).then((r) => setSavedFilters(r.data)).catch(() => {});
+  }, []);
+  useEffect(() => { if (isManager) loadSaved(); }, [isManager, loadSaved]);
+
+  const saveFilter = async () => {
+    const name = window.prompt("Name this filter (e.g. CA · GREEN · Website):");
+    if (!name || !name.trim()) return;
+    try {
+      await api.post("/crm/saved-searches", { name: name.trim(), entity: "leads", query: filters });
+      toast.success("Filter saved");
+      loadSaved();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const applySaved = (sid) => {
+    const f = savedFilters.find((s) => s.id === sid);
+    if (f) setFilters({ ...EMPTY_FILTERS, ...(f.query || {}) });
+  };
+  const deleteSaved = async (sid) => {
+    try { await api.delete(`/crm/saved-searches/${sid}`); toast.success("Filter removed"); loadSaved(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   const load = useCallback(async () => {
     const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== "" && v !== false));
@@ -104,9 +131,31 @@ export default function Leads() {
           <input data-testid="lead-search" placeholder="Search name, org, #, NPI…" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           <select data-testid="lead-filter-status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Status: all</option>{meta.statuses.map((s) => <option key={s}>{s}</option>)}</select>
           <select data-testid="lead-filter-priority" value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Priority: all</option>{meta.priorities.map((s) => <option key={s}>{s}</option>)}</select>
+          <select data-testid="lead-filter-tier" value={filters.tier} onChange={(e) => setFilters({ ...filters, tier: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">340B: all</option>{["GREEN", "YELLOW", "BLUE", "RED"].map((t) => <option key={t}>{t}</option>)}</select>
+          <select data-testid="lead-filter-state" value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">State: all</option>{US_STATES.map((s) => <option key={s}>{s}</option>)}</select>
+          <select data-testid="lead-filter-source" value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Source: all</option>{meta.sources.map((s) => <option key={s}>{s}</option>)}</select>
           <select data-testid="lead-filter-match" value={filters.match} onChange={(e) => setFilters({ ...filters, match: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Match: all</option><option value="matched">Matched</option><option value="unmatched">Unmatched</option></select>
+          <Btn variant="ghost" onClick={() => setFilters(EMPTY_FILTERS)} data-testid="lead-filter-clear">Clear</Btn>
           {!isManager && <label className="flex items-center gap-1 text-sm text-slate-600"><input type="checkbox" checked={filters.mine} onChange={(e) => setFilters({ ...filters, mine: e.target.checked })} /> Mine</label>}
         </div>
+
+        {isManager && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 text-sm">
+            <Bookmark className="h-4 w-4 text-slate-400" />
+            <span className="text-slate-500">Saved filters</span>
+            <select data-testid="saved-filter-select" value="" onChange={(e) => { if (e.target.value) applySaved(e.target.value); }} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">Load a saved filter…</option>
+              {savedFilters.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <Btn variant="ghost" onClick={saveFilter} data-testid="saved-filter-save"><Bookmark className="h-4 w-4" /> Save current</Btn>
+            {savedFilters.map((s) => (
+              <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                <button type="button" onClick={() => applySaved(s.id)} data-testid={`saved-filter-chip-${s.id}`} className="hover:text-primary">{s.name}</button>
+                <button type="button" onClick={() => deleteSaved(s.id)} data-testid={`saved-filter-del-${s.id}`} className="text-slate-400 hover:text-red-500"><Trash2 className="h-3 w-3" /></button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {isManager && (
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-white p-2 text-sm">

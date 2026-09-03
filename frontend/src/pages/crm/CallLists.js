@@ -8,9 +8,25 @@ import { PhoneCall, Plus, SkipForward, CheckCircle2 } from "lucide-react";
 
 const DISPOS = ["Connected", "No Answer", "Left Voicemail", "Busy", "Interested", "Follow-Up", "Meeting Scheduled", "Not Interested", "Do Not Call"];
 
+function ProgressBar({ done, total, testId }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div data-testid={testId} className="w-full">
+      <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+        <span>{done} / {total} called</span>
+        <span className="font-semibold text-slate-600">{pct}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export default function CallLists() {
   const nav = useNavigate();
   const [lists, setLists] = useState([]);
+  const [callsToday, setCallsToday] = useState(0);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [tier, setTier] = useState("Any");
@@ -19,7 +35,10 @@ export default function CallLists() {
   const [dispo, setDispo] = useState("Connected");
   const [notes, setNotes] = useState("");
 
-  const load = () => api.get("/crm/call-lists").then((r) => setLists(r.data)).catch(() => {});
+  const load = () => {
+    api.get("/crm/call-lists").then((r) => setLists(r.data)).catch(() => {});
+    api.get("/crm/call-stats/today").then((r) => setCallsToday(r.data.calls_today)).catch(() => {});
+  };
   useEffect(() => { load(); }, []);
 
   const create = async () => {
@@ -57,9 +76,11 @@ export default function CallLists() {
     return (
       <div>
         <PageHeader title="Call Queue" subtitle={`Physician ${active.position || active.total} of ${active.total}`}>
+          <span data-testid="queue-calls-today" className="mr-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> {callsToday} called today</span>
           <Btn variant="ghost" onClick={() => { setActive(null); load(); }}>Exit queue</Btn>
         </PageHeader>
         <div className="mx-auto max-w-2xl p-6">
+          <div className="mb-4"><ProgressBar done={active.done ? active.total : Math.max(0, (active.position || 1) - 1)} total={active.total} testId="queue-progress" /></div>
           {active.done ? (
             <div className="rounded-xl border border-dashed border-slate-300 py-20 text-center"><CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" /><p className="mt-3 font-display text-lg font-bold text-slate-700">Queue complete!</p></div>
           ) : (
@@ -93,15 +114,19 @@ export default function CallLists() {
   return (
     <div>
       <PageHeader title="Smart Call Lists" subtitle="Focused calling queues that auto-advance">
+        <span data-testid="calls-today-stat" className="mr-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> {callsToday} called today</span>
         <Btn variant="dark" onClick={buildMyQueue} data-testid="cl-my-queue"><PhoneCall className="h-4 w-4" /> My Call Queue</Btn>
         <Btn onClick={() => setOpen(true)} data-testid="cl-create-btn"><Plus className="h-4 w-4" /> New Call List</Btn>
       </PageHeader>
       <div className="space-y-3 p-6">
         {lists.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center"><PhoneCall className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-2 font-semibold text-slate-500">No call lists yet</p></div>}
         {lists.map((cl) => (
-          <div key={cl.id} data-testid="cl-card" className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
-            <div><p className="font-display font-bold text-slate-900">{cl.name}</p><p className="text-sm text-slate-500">{cl.lead_ids.length} leads · {cl.remaining} remaining</p></div>
-            <Btn onClick={() => start(cl.id)} data-testid="cl-start"><PhoneCall className="h-4 w-4" /> Start Calling</Btn>
+          <div key={cl.id} data-testid="cl-card" className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div><p className="font-display font-bold text-slate-900">{cl.name}</p><p className="text-sm text-slate-500">{cl.total} leads · {cl.remaining} remaining</p></div>
+              <Btn onClick={() => start(cl.id)} data-testid="cl-start"><PhoneCall className="h-4 w-4" /> {cl.remaining ? "Start Calling" : "Review"}</Btn>
+            </div>
+            <div className="mt-3"><ProgressBar done={cl.called} total={cl.total} testId={`cl-progress-${cl.id}`} /></div>
           </div>
         ))}
       </div>

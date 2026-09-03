@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 18 — v2.18 P0 batch validation (backend + web). Backend: 13/13 pytest tests pass (100%) against REACT_APP_BACKEND_URL — covering (1) GET /api/crm/call-stats/today returning {calls_today:int} for AM+LM and 401 unauthenticated; (2) GET /api/crm/call-lists returning called/total/remaining per list (clamped correctly, remaining = max(0, total-called)); (3) GET /api/crm/leads with state (uppercased match, verified with lowercase 'ca' param), tier (medicare_snapshot.tier_340b) and source filters — combined state+tier narrowed results (200 GREEN → 43 CA+GREEN); (4) Saved-search CRUD + per-user scoping (LM-created saved-search NOT visible to AM); (5) Public capture submit — used first Active capture-enabled campaign (spring-cardiology-expo-92bb85) since 'prize-wheel-hub-4' is the preview hostname slug, not a campaign slug — POST returns 200 with L-##### lead_number, auto-enrich background task fires without blocking; (6) Full import wizard with phone+email columns: POST /api/imports (upload) → /analyze (Phone→phone, Email→email auto-mapped) → /mapping → /validate → /execute → verified created lead persists email + phone via /api/crm/leads?q=... . Web frontend (Leads page as lead_manager): all filter bar testIDs (lead-filter-tier, -state, -source, -clear) + saved filter row (saved-filter-save, -select, -chip-<id>, -del-<id>) present; save via window.prompt+Accept dialog persisted, applying the chip re-set state=CA/tier=GREEN and narrowed to 43 rows, delete removed the chip. Call Lists page as account_manager: calls-today-stat renders '0 called today', 3 cl-card items each with cl-progress-<id> bar showing '0 / 143 called 0%'; entering queue via cl-start shows queue-progress bar '0 / 143 called 0%' under header, queue-save-next advanced it to '1 / 143 called 1%'. No console errors, no red screens.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Call Queue detail (/crm/call-lists/{id}/queue)", "issues": ["calls-today-stat is only rendered on the call-lists index, not inside the queue detail. Minor UX: a rep in the middle of a queue can't see their running today-count without exiting. Consider surfacing it in the queue header too."]}
+      ]
+    },
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration18_p0_batch.py",
+    "/app/test_reports/pytest/pytest_iter18.xml"
+  ],
+  "action_items": [
+    "(Info, not a bug) Review request referenced slug 'prize-wheel-hub-4' for the capture-submit test, but that string is the preview HOSTNAME slug, not a campaign slug. There is no campaign with capture.slug='prize-wheel-hub-4' in the DB. Test instead used the first Active capture-enabled campaign (spring-cardiology-expo-92bb85). If main agent wants a canonical named capture form for QA, seed a campaign with slug 'prize-wheel-hub-4' explicitly.",
+    "(Nice-to-have) Also render calls-today-stat inside the /crm/call-lists/{id}/queue view so reps see their running today-total while calling."
+  ],
+  "critical_code_review_comments": [
+    "routes_growth.py:87-90 /call-stats/today filters db.calls by {by_id: user.id, at: {$gte: today_start_iso}} — uses ISO string comparison. Works because ISO-8601 UTC strings sort lexicographically, but a dedicated $dateFromString index would be cleaner if the collection scales.",
+    "routes_growth.py:78-82 call-lists response computes called = min(cursor, total). Correct clamp, but this hides the case where cursor > total (data drift after list edits). Fine for now; consider logging a warning if that ever happens.",
+    "routes_crm.py:181-185 state filter uppercases input; tier filter maps directly to medicare_snapshot.tier_340b. Verified in tests. Note: source filter is exact-match, so any UI free-text mismatch (extra whitespace/casing) will silently return empty — the current dropdown is fed from /crm/lead-sources so it's safe.",
+    "Leads.js:59 filter serialization uses Object.fromEntries(entries.filter(v => v !== '' && v !== false)) — passes tier='' correctly by omitting, and won't send state='' either. Good.",
+    "Leads.js:11 EMPTY_FILTERS includes state/tier/source; applySaved spreads {...EMPTY_FILTERS, ...f.query} so old saved filters missing state/tier won't leave stale UI. Good.",
+    "routes_campaigns.py:249-255 auto-enrich background task swallows all exceptions. Correct choice for public endpoint UX (never fail the capture on PDL error), but consider at least log_event() on enrichment failure so ops can spot repeated PDL 429/402s."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration18_p0_batch.py",
+    "/app/test_reports/iteration_18.json",
+    "/app/test_reports/pytest/pytest_iter18.xml"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (2/2 pages, 4/4 features)"},
+  "test_credentials": "leadmanager@boothiq.com / 639201, accountmanager@boothiq.com / 528174, admin@boothiq.com / 482913 — all from /app/memory/test_credentials.md.",
+  "seed_data_creation": "Backend tests created: 1 saved-search 'TEST_SF_state_ca_green' (deleted in same test), 1 saved-search 'TEST_SF_lm_only' (deleted in same test), 1 capture lead via public submit (contact_first='TEST_Autoenrich', will be enriched by PDL background task — non-cleanable but harmless, single call so no credit burn beyond 1), 2 imported leads TEST_Import_Org_A/B_<ts> (persist as CRM leads — harmless). Web tests created 1 saved-filter 'TEST_SF_web_<ts>' (deleted in same run). No manual cleanup needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "v2.18 features stable. Backend contracts: GET /api/crm/call-stats/today → {calls_today:int}. GET /api/crm/call-lists → each list has {called:int, total:int, remaining:int}. GET /api/crm/leads accepts state (uppercased), tier (→medicare_snapshot.tier_340b), source query params — all combineable. Saved searches at /api/crm/saved-searches (POST/GET?entity=leads/DELETE:{sid}) are user-scoped. Public capture at POST /api/public/campaigns/{slug}/submit fires asyncio.create_task(enrich_one_lead(id)) — do NOT loop-submit or you'll burn PDL credits. Import flow: POST /api/imports (multipart file) → POST /{id}/analyze → POST /{id}/mapping → POST /{id}/validate → POST /{id}/execute; heuristic auto-maps 'Phone'/'phone'/'mobile'/'tel' → phone and 'email'/'e-mail' → email even when AI mapping unavailable. Web testIDs stable: Leads → lead-filter-tier, lead-filter-state, lead-filter-source, lead-filter-clear, saved-filter-save (window.prompt), saved-filter-select, saved-filter-chip-<id>, saved-filter-del-<id>. CallLists → calls-today-stat (index only), cl-my-queue, cl-create-btn, cl-card, cl-progress-<id> ('X / Y called  Z%'), cl-start; queue view → queue-progress, queue-card, queue-dispo, queue-notes, queue-save-next, queue-skip. NOTE: slug 'prize-wheel-hub-4' in the review request refers to the preview hostname, not a real campaign slug — pick any Active campaign from GET /api/crm/campaigns.",
+  "rca of the issue": "N/A — no bugs. All 4 P0 features (call-stats/today + call-list progress, leads state/tier/source filters, saved-filters CRUD, import wizard phone/email mapping, auto-enrich on capture) match PRD and backend contracts."
+}

@@ -168,6 +168,7 @@ async def list_leads(
     source: str | None = None, lead_manager_id: str | None = None,
     account_manager_id: str | None = None, tag: str | None = None,
     match: str | None = None, q: str | None = None, mine: bool = False,
+    state: str | None = None, tier: str | None = None,
     sort: str = "last_activity_at", limit: int = 200,
 ):
     user = await get_current_user(request)
@@ -178,6 +179,10 @@ async def list_leads(
         query["priority"] = priority
     if source:
         query["source"] = source
+    if state:
+        query["state"] = state.upper()
+    if tier:
+        query["medicare_snapshot.tier_340b"] = tier
     if lead_manager_id:
         query["lead_manager_id"] = lead_manager_id
     if account_manager_id:

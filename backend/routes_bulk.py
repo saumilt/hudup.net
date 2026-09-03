@@ -81,6 +81,30 @@ async def _run_job(job_id, lead_ids):
     await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {"status": "completed", "counts": counts, "finished_at": now_iso()}})
 
 
+async def enrich_one_lead(lead_id: str):
+    """Best-effort single-lead enrichment (used on capture). Silent on failure."""
+    try:
+        lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
+        if not lead or not (lead.get("email") or lead.get("org_name")):
+            return
+        r = await enrich_person(**_person_args(lead))
+        await record_usage("enrichment", 1)
+        if r.get("matched") and r.get("confidence") == "HIGH":
+            enr = lead.get("enrichment") or {}
+            top = {}
+            for k, v in (r.get("fields") or {}).items():
+                if v and k not in enr:
+                    enr[k] = provenance(v, "People Data Labs", "HIGH")
+                    if k == "phone" and not lead.get("phone"):
+                        top["phone"] = v
+                    if k == "work_email" and not lead.get("email"):
+                        top["email"] = v
+            await db.crm_leads.update_one({"id": lead_id}, {"$set": {"enrichment": enr, **top}})
+            await log_event("lead", lead_id, "enrichment", None, "Auto-enriched on capture")
+    except Exception:
+        pass
+
+
 class BulkInput(BaseModel):
     lead_ids: list[str] | None = None
     source: str | None = None

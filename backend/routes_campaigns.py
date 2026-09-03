@@ -246,6 +246,13 @@ async def public_submit(slug: str, data: CaptureSubmit):
     }
     await db.crm_leads.insert_one(dict(doc))
     doc.pop("_id", None)
+    if data.email or data.org_name:
+        import asyncio
+        try:
+            from routes_bulk import enrich_one_lead
+            asyncio.create_task(enrich_one_lead(lead_id))
+        except Exception:
+            pass
     await log_event("lead", lead_id, "created", None,
                     f"Lead captured via campaign '{c.get('name')}'",
                     meta={"campaign_id": c["id"], "channel": c.get("channel")}, lead_id=lead_id)
