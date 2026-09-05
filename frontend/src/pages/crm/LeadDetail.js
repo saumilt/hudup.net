@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import Softphone from "@/components/crm/Softphone";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -28,6 +28,8 @@ export default function LeadDetail() {
   const [busy, setBusy] = useState(false);
   const [ai, setAi] = useState({ busy: false, prep: null, brief: null });
   const [agent, setAgent] = useState({ busy: false, plan: null, picked: {} });
+  const [editOpen, setEditOpen] = useState(false);
+  const [edit, setEdit] = useState({});
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -36,7 +38,7 @@ export default function LeadDetail() {
   useEffect(() => {
     load();
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
-    api.get("/users", { params: { role: "account_manager" } }).then((r) => setAms(r.data)).catch(() => {});
+    api.get("/users", { params: { roles: "account_manager,lead_manager,admin,super_admin" } }).then((r) => setAms(r.data)).catch(() => {});
   }, [id, load]);
 
   if (!lead) return <div className="p-10 text-slate-400">Loading…</div>;
@@ -60,6 +62,22 @@ export default function LeadDetail() {
   const assign = async (field, val) => {
     await api.post(`/crm/leads/${id}/assign`, { [field]: val });
     toast.success("Assigned"); load();
+  };
+  const openEdit = () => {
+    setEdit({
+      org_name: lead.org_name || "", contact_first: lead.contact_first || "",
+      contact_last: lead.contact_last || "", phone: lead.phone || "", email: lead.email || "",
+      priority: lead.priority || "Medium", est_value: lead.est_value ?? "",
+      specialty: lead.specialty || "", city: lead.city || "", state: lead.state || "",
+    });
+    setEditOpen(true);
+  };
+  const saveEdit = async () => {
+    try {
+      const payload = { ...edit, est_value: edit.est_value === "" ? null : Number(edit.est_value) };
+      await api.patch(`/crm/leads/${id}`, payload);
+      toast.success("Lead updated"); setEditOpen(false); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const convert = async () => {
     try {
@@ -190,6 +208,7 @@ export default function LeadDetail() {
             <select data-testid="ld-status" value={lead.status} onChange={(e) => changeStatus(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm">
               {meta.statuses.map((s) => <option key={s}>{s}</option>)}
             </select>
+            <Btn variant="ghost" data-testid="ld-edit" onClick={openEdit}><Pencil className="h-4 w-4" /> Edit</Btn>
             {!lead.opportunity_id && <Btn onClick={() => setShowConvert(true)} data-testid="ld-convert"><Target className="h-4 w-4" /> Convert</Btn>}
             {lead.opportunity_id && <Btn variant="ghost" onClick={() => nav("/crm/opportunities")}><Link2 className="h-4 w-4" /> View opportunity</Btn>}
           </div>
@@ -271,10 +290,10 @@ export default function LeadDetail() {
         <div className="space-y-6">
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><UserCheck className="h-4 w-4 text-primary" /> Ownership</h2>
-            <Field label="Account Manager">
+            <Field label="Assigned to (owner)">
               <select data-testid="ld-assign-am" disabled={!isManager} value={lead.account_manager_id || ""} onChange={(e) => assign("account_manager_id", e.target.value)} className={inputCls}>
                 <option value="">Unassigned</option>
-                {ams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {ams.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-2 text-sm text-slate-500">
@@ -360,6 +379,22 @@ export default function LeadDetail() {
           </section>
         </div>
       </div>
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Lead" wide>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Organization / practice"><input data-testid="edit-org" value={edit.org_name} onChange={(e) => setEdit({ ...edit, org_name: e.target.value })} className={inputCls} /></Field>
+          <Field label="Priority"><select data-testid="edit-priority" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: e.target.value })} className={inputCls}>{(meta.priorities || ["Low", "Medium", "High", "Urgent"]).map((p) => <option key={p}>{p}</option>)}</select></Field>
+          <Field label="First name"><input data-testid="edit-first" value={edit.contact_first} onChange={(e) => setEdit({ ...edit, contact_first: e.target.value })} className={inputCls} /></Field>
+          <Field label="Last name"><input data-testid="edit-last" value={edit.contact_last} onChange={(e) => setEdit({ ...edit, contact_last: e.target.value })} className={inputCls} /></Field>
+          <Field label="Phone"><input data-testid="edit-phone" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} className={inputCls} /></Field>
+          <Field label="Email"><input data-testid="edit-email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} className={inputCls} /></Field>
+          <Field label="Specialty"><input data-testid="edit-specialty" value={edit.specialty} onChange={(e) => setEdit({ ...edit, specialty: e.target.value })} className={inputCls} /></Field>
+          <Field label="Est. value ($)"><input data-testid="edit-value" type="number" value={edit.est_value} onChange={(e) => setEdit({ ...edit, est_value: e.target.value })} className={inputCls} /></Field>
+          <Field label="City"><input data-testid="edit-city" value={edit.city} onChange={(e) => setEdit({ ...edit, city: e.target.value })} className={inputCls} /></Field>
+          <Field label="State"><input data-testid="edit-state" value={edit.state} onChange={(e) => setEdit({ ...edit, state: e.target.value })} className={inputCls} maxLength={2} placeholder="e.g. CA" /></Field>
+        </div>
+        <Btn onClick={saveEdit} data-testid="edit-save" className="mt-3 w-full justify-center">Save Changes</Btn>
+      </Modal>
 
       <Modal open={showConvert} onClose={() => setShowConvert(false)} title="Convert to Opportunity">
         <Field label="Opportunity value ($)"><input data-testid="conv-value" type="number" value={conv.value} onChange={(e) => setConv({ ...conv, value: e.target.value })} className={inputCls} /></Field>

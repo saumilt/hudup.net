@@ -131,7 +131,8 @@ class MappingInput(BaseModel):
     rule: str = "safe"  # safe (create new, skip existing) | refresh (fill missing on existing)
     source: str | None = None
     data_year: int | None = None
-    distribute: str = "route"  # route (territory + rr fallback) | equal (round-robin all reps)
+    distribute: str = "route"  # route (territory + rr fallback) | equal (all reps) | person (one assignee)
+    assignee_id: str | None = None
 
 
 @router.post("/{import_id}/mapping")
@@ -139,7 +140,8 @@ async def save_mapping(import_id: str, data: MappingInput, user=Depends(IMPORTER
     await _get_job(import_id)
     await db.import_jobs.update_one({"id": import_id}, {"$set": {
         "mapping": data.mapping, "rule": data.rule, "import_source": data.source,
-        "data_year": data.data_year, "distribute": data.distribute, "status": "mapped"}})
+        "data_year": data.data_year, "distribute": data.distribute,
+        "assignee_id": data.assignee_id, "status": "mapped"}})
     return {"ok": True}
 
 
@@ -149,6 +151,7 @@ class PresetInput(BaseModel):
     source: str | None = None
     data_year: int | None = None
     distribute: str = "route"
+    assignee_id: str | None = None
     rule: str = "safe"
 
 
@@ -161,7 +164,8 @@ async def list_presets(user=Depends(IMPORTER)):
 async def save_preset(data: PresetInput, user=Depends(IMPORTER)):
     doc = {"id": str(uuid.uuid4()), "name": data.name.strip(), "mapping": data.mapping,
            "source": data.source, "data_year": data.data_year, "distribute": data.distribute,
-           "rule": data.rule, "created_by": user["id"], "created_at": now_iso()}
+           "assignee_id": data.assignee_id, "rule": data.rule,
+           "created_by": user["id"], "created_at": now_iso()}
     await db.import_presets.update_one({"name": doc["name"]}, {"$set": doc}, upsert=True)
     return {"ok": True, "name": doc["name"]}
 
@@ -185,6 +189,31 @@ def _project(row: dict, mapping: dict) -> dict:
     if notes:
         out["_notes"] = notes
     return out
+
+
+import re as _re
+
+
+def _reconcile_claim_notes(import_notes: list, snap: dict | None):
+    """Medicare is authoritative for the total claim count: if a matched Medicare
+    record exists, override any imported 'total claims' note whose value disagrees."""
+    if not snap:
+        return
+    med = snap.get("tot_clms")
+    if med in (None, ""):
+        return
+    med_str = str(med)
+    for n in import_notes:
+        text = n.get("text") or ""
+        label, _, value = text.partition(":")
+        low = label.lower()
+        is_claim_count = ("claim" in low
+                          and not any(x in low for x in ("cost", "avg", "average", "per ", "rate", "amount", "$")))
+        if not is_claim_count:
+            continue
+        digits = _re.sub(r"[^0-9]", "", value)
+        if digits != med_str:
+            n["text"] = f"{label.strip()}: {med_str} (from Medicare)"
 
 
 @router.post("/{import_id}/validate")
@@ -230,6 +259,11 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
     imp_source = job.get("import_source")
     data_year = job.get("data_year")
     distribute = job.get("distribute", "route")
+    assignee_id = job.get("assignee_id")
+    assignee_name = None
+    if distribute == "person" and assignee_id:
+        au = await db.users.find_one({"id": assignee_id}, {"_id": 0, "name": 1})
+        assignee_name = au.get("name") if au else None
     # Build the equal-distribution pool (active account managers / reps) once.
     pool = []
     if distribute == "equal":
@@ -283,6 +317,8 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                 "author_id": user["id"], "author_name": user.get("name"),
                 "visibility": "team", "pinned": False, "created_at": now_iso(),
                 "edited_at": None, "edits": []})
+        # Medicare is authoritative for the total claim count — correct any mismatching note.
+        _reconcile_claim_notes(import_notes, snap)
         doc = {"id": lead_id, "lead_number": f"L-{num:05d}",
                "org_name": p.get("org_name"), "contact_first": p.get("contact_first"),
                "contact_last": p.get("contact_last"), "phone": p.get("phone"), "email": p.get("email"),
@@ -303,8 +339,13 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                                    "by_name": user.get("name"), "reason": "Imported", "at": now_iso()}]}
         await db.crm_leads.insert_one(dict(doc))
         await log_activity(lead_id, activity("import", user, f"Imported from {job['filename']}"))
-        # Assign: equal round-robin across the pool, or territory routing with rr fallback.
-        if distribute == "equal" and pool:
+        # Assign: to one person, equal round-robin, or territory routing with rr fallback.
+        if distribute == "person" and assignee_id:
+            await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+                "account_manager_id": assignee_id, "account_manager_name": assignee_name,
+                "routing_reason": f"Assigned on import to {assignee_name or assignee_id}",
+                "routed_at": now_iso()}})
+        elif distribute == "equal" and pool:
             am_id, am_name = pool[rr_idx % len(pool)]
             rr_idx += 1
             await db.crm_leads.update_one({"id": lead_id}, {"$set": {

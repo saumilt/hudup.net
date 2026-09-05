@@ -105,11 +105,16 @@ async def _send_reset(name: str, email: str, pin: str) -> bool:
 
 
 @router.get("")
-async def list_users(request: Request, role: str | None = None):
-    """Any authenticated user can list users (needed for assignment pickers)."""
+async def list_users(request: Request, role: str | None = None, roles: str | None = None):
+    """Any authenticated user can list users (needed for assignment pickers).
+    `roles` accepts a comma-separated list (e.g. account_manager,lead_manager,admin)."""
     await get_current_user(request)
     q = {}
-    if role:
+    if roles:
+        wanted = [r.strip() for r in roles.split(",") if r.strip()]
+        if wanted:
+            q["role"] = {"$in": wanted}
+    elif role:
         q["role"] = role
     users = await db.users.find(q, {"_id": 0, "pin_hash": 0}).sort("name", 1).to_list(500)
     for u in users:

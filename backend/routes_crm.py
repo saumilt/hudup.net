@@ -220,6 +220,8 @@ async def get_lead(lead_id: str, user=Depends(ANY_CRM)):
 
 class LeadPatch(BaseModel):
     org_name: str | None = None
+    contact_first: str | None = None
+    contact_last: str | None = None
     phone: str | None = None
     email: str | None = None
     priority: str | None = None
@@ -227,11 +229,16 @@ class LeadPatch(BaseModel):
     est_value: float | None = None
     qualification_notes: str | None = None
     next_activity_at: str | None = None
+    specialty: str | None = None
+    city: str | None = None
+    state: str | None = None
 
 
 @router.patch("/leads/{lead_id}")
 async def patch_lead(lead_id: str, data: LeadPatch, user=Depends(ANY_CRM)):
     patch = {k: v for k, v in data.dict().items() if v is not None}
+    if "state" in patch and patch["state"]:
+        patch["state"] = patch["state"].upper()
     if not patch:
         return {"ok": True}
     r = await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})

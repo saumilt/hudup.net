@@ -18,6 +18,8 @@ export default function ImportWizard() {
   const [source, setSource] = useState("Data Scraping");
   const [year, setYear] = useState("");
   const [distribute, setDistribute] = useState("route");
+  const [assignees, setAssignees] = useState([]);
+  const [assigneeId, setAssigneeId] = useState("");
   const [valid, setValid] = useState(null);   // {counts, preview, total}
   const [result, setResult] = useState(null); // {created, updated, skipped}
   const [busy, setBusy] = useState(false);
@@ -26,6 +28,7 @@ export default function ImportWizard() {
   useEffect(() => {
     api.get("/crm/lead-sources").then((r) => setSources(r.data)).catch(() => {});
     api.get("/imports/presets").then((r) => setPresets(r.data)).catch(() => {});
+    api.get("/users", { params: { roles: "account_manager,lead_manager,admin,super_admin" } }).then((r) => setAssignees(r.data)).catch(() => {});
   }, []);
   const applyPreset = (id) => {
     const p = presets.find((x) => x.id === id);
@@ -34,6 +37,7 @@ export default function ImportWizard() {
     if (p.source) setSource(p.source);
     if (p.data_year) setYear(String(p.data_year));
     setDistribute(p.distribute || "route");
+    setAssigneeId(p.assignee_id || "");
     setRule(p.rule || "safe");
     toast.success(`Loaded preset "${p.name}"`);
   };
@@ -41,7 +45,7 @@ export default function ImportWizard() {
     const name = window.prompt("Save this mapping as a preset named:");
     if (!name || !name.trim()) return;
     try {
-      await api.post("/imports/presets", { name: name.trim(), mapping, source, data_year: year ? Number(year) : null, distribute, rule });
+      await api.post("/imports/presets", { name: name.trim(), mapping, source, data_year: year ? Number(year) : null, distribute, assignee_id: assigneeId || null, rule });
       const r = await api.get("/imports/presets"); setPresets(r.data);
       toast.success("Preset saved");
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -68,9 +72,10 @@ export default function ImportWizard() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
   };
   const doValidate = async () => {
+    if (distribute === "person" && !assigneeId) return toast.error("Pick a person to assign the imported leads to");
     setBusy(true);
     try {
-      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule, source, data_year: year ? Number(year) : null, distribute });
+      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule, source, data_year: year ? Number(year) : null, distribute, assignee_id: distribute === "person" ? (assigneeId || null) : null });
       const r = await api.post(`/imports/${job.import_id}/validate`);
       setValid(r.data); setStep(2);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
@@ -167,8 +172,18 @@ export default function ImportWizard() {
                   <select data-testid="import-distribute" value={distribute} onChange={(e) => setDistribute(e.target.value)} className={inputCls}>
                     <option value="route">Territory routing (round-robin fallback)</option>
                     <option value="equal">Assign equally to all reps (round-robin)</option>
+                    <option value="person">Assign all to a specific person…</option>
                   </select>
                 </div>
+                {distribute === "person" && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Assign to</label>
+                    <select data-testid="import-assignee" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={inputCls}>
+                      <option value="">Select a person…</option>
+                      {assignees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="flex">
                 <Btn data-testid="import-validate" onClick={doValidate} disabled={busy} className="ml-auto">{busy ? "Checking…" : "Review Matches"} <ArrowRight className="h-4 w-4" /></Btn>

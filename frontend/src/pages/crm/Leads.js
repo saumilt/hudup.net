@@ -28,7 +28,7 @@ export default function Leads() {
 
   useEffect(() => {
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
-    api.get("/users", { params: { role: "account_manager" } }).then((r) => setAms(r.data)).catch(() => {});
+    api.get("/users", { params: { roles: "account_manager,lead_manager,admin,super_admin" } }).then((r) => setAms(r.data)).catch(() => {});
     api.get("/crm/sequences").then((r) => setSeqs(r.data)).catch(() => {});
   }, []);
 
@@ -162,7 +162,7 @@ export default function Leads() {
             <UserCheck className="h-4 w-4 text-slate-400" />
             <select data-testid="bulk-assign-am" value={assignTo} onChange={(e) => setAssignTo(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
               <option value="">Assign selected to…</option>
-              {ams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {ams.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
             </select>
             <Btn variant="ghost" onClick={bulkAssign} data-testid="bulk-assign-btn">Assign</Btn>
             <span className="mx-1 h-5 w-px bg-slate-200" />
