@@ -226,7 +226,7 @@ def _reconcile_claim_notes(import_notes: list, snap: dict | None):
             continue
         imp_disp = str(int(imp_num)) if imp_num.is_integer() else str(imp_num)
         n["text"] = f"{label.strip()}: {med_disp} (from Medicare)"
-        return {"label": label.strip(), "imported": imp_disp, "medicare": med_disp}
+        return {"label": label.strip(), "imported": imp_disp, "medicare": med_disp, "note_id": n.get("id")}
     return None
 
 

@@ -36,6 +36,12 @@ export default function MismatchReport() {
       toast.success("Accepted Medicare's number"); load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const keepImported = async (id) => {
+    try {
+      await api.post("/crm/leads/claim-mismatch/keep-imported", { lead_ids: [id] });
+      toast.success("Kept the imported number (source verified)"); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
 
   return (
     <div>
@@ -75,7 +81,12 @@ export default function MismatchReport() {
                       <td className="p-3 text-right font-semibold text-red-600">{d.imported ?? "—"}</td>
                       <td className="p-3 text-right font-semibold text-emerald-700">{d.medicare ?? Number(snap.tot_clms || 0).toLocaleString()}</td>
                       <td className="p-3 text-slate-500">{l.account_manager_name || "Unassigned"}</td>
-                      <td className="p-3 text-right"><Btn variant="ghost" onClick={() => acceptOne(l.id)} data-testid={`accept-one-${l.id}`}>Accept</Btn></td>
+                      <td className="p-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Btn variant="ghost" onClick={() => keepImported(l.id)} data-testid={`keep-imported-${l.id}`}>Keep imported</Btn>
+                          <Btn variant="ghost" onClick={() => acceptOne(l.id)} data-testid={`accept-one-${l.id}`}>Use Medicare</Btn>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}

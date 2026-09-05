@@ -6,7 +6,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
-## v2.22 (2026-06) — Auto-Fix Claims (accept Medicare's number in bulk)
+## v2.23 (2026-06) — Reject & Keep imported claim (per-lead)
+- **Keep imported number**: the importer now records the overridden note's `note_id` in `claim_mismatch_detail`. New `POST /api/crm/leads/claim-mismatch/keep-imported` (manager, per `lead_ids`) restores that note to the imported value (`"<label>: <imported> (source verified)"`), clears the flag, and stamps `claim_mismatch_resolved.kept="imported"`. The Mismatch Report gained per-row **"Keep imported"** vs **"Use Medicare"** actions (bulk "Accept Medicare's numbers (N)" unchanged; its resolve now stamps `kept="medicare"`). Lets managers keep the source figure when it's actually right.
+- Verified by main agent (self-test): curl — imported 555 vs Medicare 1943 (note overridden to 1943) → keep-imported → note "Total Claims: 555 (source verified)", flag cleared, resolved.kept="imported"; UI screenshot confirmed both per-row buttons. Rolled back the test import. NOT run through the testing agent (small feature on tested infra). Version → **v2.23**.
+
+
+
 - **Accept Medicare's numbers**: new `POST /api/crm/leads/claim-mismatch/resolve` (manager) — clears the `claim_mismatch` flag on flagged leads (all, or a passed `lead_ids` list), stamps `claim_mismatch_resolved {at, by}`, and logs an activity. The note already carries the Medicare value (from import), so this just resolves/acknowledges the flag. On the **Mismatch Report** page: a header **"Accept Medicare's numbers (N)"** button (with confirm) resolves every flagged lead at once, plus a per-row **Accept**. Resolved leads drop off the report and lose the Leads-list badge.
 - Verified by main agent (self-test): curl — imported a wrong claim (555) vs Medicare (1943) → 1 flagged → resolve-all → 0 flagged (note retained Medicare value); UI screenshot confirmed the report table (555 red vs 1943 green) + Accept buttons. Rolled back the test import. NOT run through the testing agent (small feature on already-tested infra). Version → **v2.22**.
 

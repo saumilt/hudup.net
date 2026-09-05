@@ -410,11 +410,43 @@ async def resolve_claim_mismatch(data: ResolveMismatchInput, user=Depends(MANAGE
         return {"ok": True, "resolved": 0}
     await db.crm_leads.update_many({"id": {"$in": ids}}, {"$set": {
         "claim_mismatch": False,
-        "claim_mismatch_resolved": {"at": now_iso(), "by_id": user["id"], "by_name": user.get("name")}}})
+        "claim_mismatch_resolved": {"at": now_iso(), "by_id": user["id"],
+                                    "by_name": user.get("name"), "kept": "medicare"}}})
     for lid in ids:
         await log_activity(lid, activity("updated", user, "Accepted Medicare claim count (mismatch resolved)",
                                          {"changes": [{"field": "claim_mismatch", "from": True, "to": False}]}))
     return {"ok": True, "resolved": len(ids)}
+
+
+class KeepImportedInput(BaseModel):
+    lead_ids: list[str]  # per-lead decision (source verified for these)
+
+
+@router.post("/leads/claim-mismatch/keep-imported")
+async def keep_imported_claim(data: KeepImportedInput, user=Depends(MANAGER)):
+    """Reject Medicare's override and keep the imported claim number (source verified)."""
+    kept = 0
+    for lid in data.lead_ids:
+        lead = await db.crm_leads.find_one({"id": lid, "claim_mismatch": True}, {"_id": 0})
+        if not lead:
+            continue
+        detail = lead.get("claim_mismatch_detail") or {}
+        label, imported, note_id = detail.get("label"), detail.get("imported"), detail.get("note_id")
+        notes = lead.get("notes") or []
+        if label and imported:
+            for n in notes:
+                if (note_id and n.get("id") == note_id) or (not note_id and (n.get("text") or "").startswith(f"{label}:")):
+                    n["text"] = f"{label}: {imported} (source verified)"
+                    break
+        await db.crm_leads.update_one({"id": lid}, {"$set": {
+            "notes": notes, "claim_mismatch": False,
+            "claim_mismatch_resolved": {"at": now_iso(), "by_id": user["id"],
+                                        "by_name": user.get("name"), "kept": "imported"}}})
+        await log_activity(lid, activity("updated", user,
+                                         f"Kept imported claim count ({imported}) — source verified",
+                                         {"changes": [{"field": "claim_mismatch", "from": True, "to": False}]}))
+        kept += 1
+    return {"ok": True, "kept": kept}
 
 
 class ConvertInput(BaseModel):
