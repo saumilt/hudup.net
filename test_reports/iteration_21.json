@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 21 — BoothIQ v2.21 validation. Backend: 6/6 pytest pass (100%). (1) POST /api/crm/leads/bulk-assign now returns {ok:true, updated:N, prev:[{lead_id, account_manager_id}]} — verified prev captures the previous owner for each lead in the batch, before the reassign is applied. (2) POST /api/crm/leads/restore-assign {assignments:[{lead_id, account_manager_id}]} correctly restores each lead's previous owner and sets routing_reason='Reassignment undone', returning {ok:true, restored:N}. Full reassign→restore round-trip round-trips the assignment cleanly (also verified for the case where prev owner was auto-routed post-create). (3) POST /api/crm/notifications/digest/run?window_hours=24 (lead_manager) returns {reps_notified:int, total_leads:int} (returned 200 in ~2s in preview; total_leads=410+). AM role is correctly forbidden (403). (4) Import execute (distribute=person, assignee_id=<lead_manager>) completes with counts and creates the lead assigned to the chosen person — the per-import immediate email has been removed and execute no longer raises. (5) GET /api/crm/leads?claim_mismatch=true still returns only flagged leads (every row has claim_mismatch=true). Web (leadmanager@boothiq.com/639201, REACT_APP_BACKEND_URL): (a) Leads page — selected 2 lead-select-<id> rows, chose 'Account Manager' in bulk-assign-am, clicked bulk-assign-btn, reassign-confirm-text reads 'Reassign 2 leads to Account Manager? They'll be notified by email and push.', clicking reassign-confirm-btn triggers bulk-assign; sonner toast shows 'Reassigned 2 lead(s) to Account Manager' with an 'Undo' action button (10s duration); clicking Undo hits /crm/leads/restore-assign and shows toast 'Undone — restored 2 lead(s)' — VERIFIED in-screenshot. (b) Lead Detail — Section header now reads 'Change History' (renamed from 'Edit History' in v2.20); hist-tab-all / hist-tab-updated / hist-tab-assigned / hist-tab-status testIDs all present; selecting a tab narrows the list correctly (on a sample lead: all=2, updated=0, assigned=2, status=0; narrowing invariant all>=each subset holds). (c) Mismatch Report — nav-mismatch-report opens /crm/mismatch-report; empty state 'No claim mismatches' renders correctly when no flagged leads exist (backend tests rolled back their imports). Row rendering was validated in iteration_20 with the same schema (mismatch-row-<id>). No console errors, no red screens. Push still 500s in preview due to placeholder EMERGENT_PUSH_KEY — expected and swallowed by notify_assignment_summary.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    },
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration21_v221.py",
+    "/app/test_reports/pytest/pytest_iter21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_crm.py:346-368 bulk_assign — prev captures BEFORE update_many, using find with {'id': {'$in': ids}}. If some ids are invalid, they are silently omitted from prev (count of prev may be < len(lead_ids)); this is fine because restore only acts on entries it receives. Consider returning updated_ids too for auditability.",
+    "routes_crm.py:375-394 restore_assign — Iterates assignments and does one update per lead. For very large undo batches, a bulk operation grouped by previous owner would be more efficient, but current UX (a Ctrl-Z-style toast on a single bulk-assign) is bounded and fine.",
+    "routes_digest.py:22 — Query uses ISO string range on 'routed_at'. Since routed_at is stored via now_iso() (also ISO 8601 UTC), lexical comparison is correct. Good.",
+    "routes_digest.py:46-52 — send_email is best-effort per rep. If Resend key becomes invalid, the digest silently reports reps_notified<total, which is correct but may hide a systemic email outage. Consider exposing last_error in the response for manager visibility.",
+    "routes_digest.py:62-80 digest_worker — Uses app_settings with _id=DIGEST_KEY. On first-ever run it only records a baseline and never sends — good anti-blast behavior. However, on backend restart it re-reads the last_run so it still respects the 24h window. Good.",
+    "routes_import.py:378 — Per-import email path removed; execute is fully sync-safe. Confirmed no notify call remains in execute()."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration21_v221.py",
+    "/app/test_reports/iteration_21.json",
+    "/app/test_reports/pytest/pytest_iter21.xml"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (undo toast+restore, hist tabs all present + narrowing, mismatch report route + empty state)"},
+  "test_credentials": "leadmanager@boothiq.com / 639201; accountmanager@boothiq.com / 528174 (for role-guard check)",
+  "seed_data_creation": "Backend tests created 5 TEST_v221 leads (2 for prev-capture, 1 for unassigned-restore, plus 1 web test lead TEST_v221_web_undo) — all prefixed 'TEST_v221'. Import test created 1 import job (NPI 1528183746), executed and rolled back inside the test — no residue.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "v2.21 stable. Contracts to preserve: (1) POST /api/crm/leads/bulk-assign returns {ok, updated, prev:[{lead_id, account_manager_id}]}. (2) POST /api/crm/leads/restore-assign {assignments:[...]} → {ok, restored}; sets routing_reason='Reassignment undone'. (3) POST /api/crm/notifications/digest/run?window_hours=N (lead_manager) → {reps_notified, total_leads}. (4) Import execute has NO per-import email path. (5) claim_mismatch=true filter unchanged. Web testIDs stable: Leads (lead-select-<id>, bulk-assign-am, bulk-assign-btn, reassign-confirm-text, reassign-confirm-btn) + toast Undo action, LeadDetail (ld-edit-history, hist-tab-all/updated/assigned/status, ld-edit, edit-save), MismatchReport (/crm/mismatch-report, nav-mismatch-report, mismatch-row-<id>). Push 500s in preview are EXPECTED and swallowed by notify_assignment_summary.",
+  "rca of the issue": "N/A — no bugs found. All 4 v2.21 features work end-to-end: (1) Undo Reassign (backend prev+restore + web sonner toast action), (2) Daily Digest Email endpoint + role guard + worker structure, (3) Import no longer emails per-import (execute path clean), (4) Mismatch Report route + nav + empty state + filter reuse. History Filter tabs (bonus improvement over v2.20's static list) work with correct narrowing invariant."
+}

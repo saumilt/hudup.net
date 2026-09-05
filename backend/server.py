@@ -27,6 +27,7 @@ from routes_forecast import router as forecast_router
 from routes_campaigns import router as campaigns_router, public_router as campaigns_public_router
 from routes_push import router as push_router
 from routes_voice import router as voice_router
+from routes_digest import router as digest_router, digest_worker
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
 
@@ -85,6 +86,7 @@ app.include_router(campaigns_router)
 app.include_router(campaigns_public_router)
 app.include_router(push_router)
 app.include_router(voice_router)
+app.include_router(digest_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -254,6 +256,8 @@ async def _run_init():
     # Background worker: advance due sequence steps.
     import asyncio as _asyncio
     _asyncio.create_task(sequence_worker())
+    # Background worker: daily assignment digest email.
+    _asyncio.create_task(digest_worker())
 
     # Initialize object storage for chunked CSV upload staging (best-effort).
     try:

@@ -30,6 +30,7 @@ export default function LeadDetail() {
   const [agent, setAgent] = useState({ busy: false, plan: null, picked: {} });
   const [editOpen, setEditOpen] = useState(false);
   const [edit, setEdit] = useState({});
+  const [histFilter, setHistFilter] = useState("all");
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -86,7 +87,10 @@ export default function LeadDetail() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const comm = lead.comm || {};
-  const editHistory = (lead.activity || []).filter((a) => ["updated", "assigned", "status"].includes(a.kind));
+  const HIST_TABS = [["all", "All"], ["updated", "Edits"], ["assigned", "Reassignments"], ["status", "Status"]];
+  const editHistory = (lead.activity || [])
+    .filter((a) => ["updated", "assigned", "status"].includes(a.kind))
+    .filter((a) => histFilter === "all" || a.kind === histFilter);
   const sendEmail = async () => {
     if (!email.subject.trim() || !email.html.trim()) return toast.error("Subject and body required");
     setBusy(true);
@@ -319,6 +323,11 @@ export default function LeadDetail() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-5" data-testid="ld-edit-history">
             <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><History className="h-4 w-4 text-primary" /> Change History</h2>
+            <div className="mb-3 flex flex-wrap gap-1">
+              {HIST_TABS.map(([k, lbl]) => (
+                <button key={k} data-testid={`hist-tab-${k}`} onClick={() => setHistFilter(k)} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${histFilter === k ? "bg-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{lbl}</button>
+              ))}
+            </div>
             {editHistory.length === 0 ? (
               <p className="text-sm text-slate-400">No changes yet.</p>
             ) : (

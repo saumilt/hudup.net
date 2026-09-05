@@ -33,6 +33,7 @@ import CrmExplorer from "@/pages/crm/DataExplorer";
 import CrmTeams from "@/pages/crm/Teams";
 import CrmForecast from "@/pages/crm/Forecast";
 import CrmCampaigns from "@/pages/crm/Campaigns";
+import CrmMismatchReport from "@/pages/crm/MismatchReport";
 import CaptureForm from "@/pages/CaptureForm";
 import SelfRegister from "@/pages/SelfRegister";
 import EventsHome from "@/pages/EventsHome";
@@ -118,6 +119,7 @@ function App() {
             <Route path="automation" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmAutomation /></ProtectedRoute>} />
             <Route path="analytics" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmAnalytics /></ProtectedRoute>} />
             <Route path="import" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmImport /></ProtectedRoute>} />
+            <Route path="mismatch-report" element={<ProtectedRoute roles={["admin", "super_admin", "lead_manager"]}><CrmMismatchReport /></ProtectedRoute>} />
             <Route path="providers" element={<ProtectedRoute adminOnly><CrmProviders /></ProtectedRoute>} />
             <Route path="users" element={<ProtectedRoute adminOnly><CrmUsers /></ProtectedRoute>} />
           </Route>

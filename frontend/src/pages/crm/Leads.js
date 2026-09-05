@@ -70,10 +70,20 @@ export default function Leads() {
   };
   const doReassign = async () => {
     const ids = reassign.ids;
-    await api.post("/crm/leads/bulk-assign", { lead_ids: ids, account_manager_id: assignTo });
+    const r = await api.post("/crm/leads/bulk-assign", { lead_ids: ids, account_manager_id: assignTo });
     const who = ams.find((a) => a.id === assignTo)?.name || "the selected person";
-    toast.success(`Reassigned ${ids.length} lead(s) to ${who}`);
+    const prev = r.data?.prev || [];
     setReassign({ open: false, ids: [] }); setSel({}); load();
+    toast.success(`Reassigned ${ids.length} lead(s) to ${who}`, {
+      duration: 10000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          try { const u = await api.post("/crm/leads/restore-assign", { assignments: prev }); toast.success(`Undone — restored ${u.data.restored} lead(s)`); load(); }
+          catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+        },
+      },
+    });
   };
   const bulkEnrich = async () => {
     const ids = Object.keys(sel).filter((k) => sel[k]);

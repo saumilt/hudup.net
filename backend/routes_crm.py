@@ -348,6 +348,10 @@ async def bulk_assign(data: BulkAssignInput, user=Depends(MANAGER)):
     u = await db.users.find_one({"id": data.account_manager_id}, {"_id": 0, "name": 1})
     if not u:
         raise HTTPException(404, "Account Manager not found")
+    # Capture previous owners so the action can be undone.
+    prev_docs = await db.crm_leads.find(
+        {"id": {"$in": data.lead_ids}}, {"_id": 0, "id": 1, "account_manager_id": 1}).to_list(len(data.lead_ids) or 1)
+    prev = [{"lead_id": d["id"], "account_manager_id": d.get("account_manager_id")} for d in prev_docs]
     r = await db.crm_leads.update_many({"id": {"$in": data.lead_ids}},
                                        {"$set": {"account_manager_id": data.account_manager_id,
                                                  "account_manager_name": u.get("name"),
@@ -361,7 +365,33 @@ async def bulk_assign(data: BulkAssignInput, user=Depends(MANAGER)):
                                         "", user.get("name"))
     except Exception:
         pass
-    return {"ok": True, "updated": r.modified_count}
+    return {"ok": True, "updated": r.modified_count, "prev": prev}
+
+
+class RestoreAssignInput(BaseModel):
+    assignments: list[dict]  # [{lead_id, account_manager_id}]
+
+
+@router.post("/leads/restore-assign")
+async def restore_assign(data: RestoreAssignInput, user=Depends(MANAGER)):
+    """Undo a bulk reassign — restore each lead's previous owner."""
+    restored = 0
+    for a in data.assignments:
+        lid = a.get("lead_id")
+        am = a.get("account_manager_id")
+        if not lid:
+            continue
+        amn = None
+        if am:
+            au = await db.users.find_one({"id": am}, {"_id": 0, "name": 1})
+            amn = au.get("name") if au else None
+        r = await db.crm_leads.update_one({"id": lid}, {"$set": {
+            "account_manager_id": am, "account_manager_name": amn,
+            "routing_reason": "Reassignment undone", "routed_at": now_iso()}})
+        if r.modified_count:
+            await log_activity(lid, activity("assigned", user, "Reassignment undone"))
+            restored += 1
+    return {"ok": True, "restored": restored}
 
 
 class ConvertInput(BaseModel):

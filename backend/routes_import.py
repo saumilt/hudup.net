@@ -375,14 +375,7 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
         created_ids.append(lead_id)
         created += 1
     counts = {"created": created, "updated": updated, "skipped": skipped}
-    # Notify the assignee (email + push) when leads were handed to one person on import.
-    if distribute == "person" and assignee_id and created > 0:
-        try:
-            from routes_push import notify_assignment_summary
-            await notify_assignment_summary(assignee_id, created,
-                                            f"from import \"{job.get('filename')}\"", user.get("name"))
-        except Exception:
-            pass
+    # Per-import assignment emails are replaced by the daily digest (routes_digest).
     await db.import_jobs.update_one({"id": import_id},
                                     {"$set": {"created_ids": created_ids, "counts": counts,
                                               "status": "completed", "executed_at": now_iso()}})
