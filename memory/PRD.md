@@ -6,7 +6,12 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
-## v2.21 (2026-06) — Undo reassign · Daily assignment digest · Change-history filter · Mismatch Report
+## v2.22 (2026-06) — Auto-Fix Claims (accept Medicare's number in bulk)
+- **Accept Medicare's numbers**: new `POST /api/crm/leads/claim-mismatch/resolve` (manager) — clears the `claim_mismatch` flag on flagged leads (all, or a passed `lead_ids` list), stamps `claim_mismatch_resolved {at, by}`, and logs an activity. The note already carries the Medicare value (from import), so this just resolves/acknowledges the flag. On the **Mismatch Report** page: a header **"Accept Medicare's numbers (N)"** button (with confirm) resolves every flagged lead at once, plus a per-row **Accept**. Resolved leads drop off the report and lose the Leads-list badge.
+- Verified by main agent (self-test): curl — imported a wrong claim (555) vs Medicare (1943) → 1 flagged → resolve-all → 0 flagged (note retained Medicare value); UI screenshot confirmed the report table (555 red vs 1943 green) + Accept buttons. Rolled back the test import. NOT run through the testing agent (small feature on already-tested infra). Version → **v2.22**.
+
+
+
 - **Undo reassign**: `bulk-assign` now returns `prev` (each lead's previous owner); new `POST /api/crm/leads/restore-assign` restores them. The Leads reassign success toast shows an **Undo** action (sonner) that reverts the batch (routing_reason "Reassignment undone").
 - **Daily assignment digest** (`routes_digest.py`): new `run_assignment_digest()` emails each rep ONE summary of leads assigned to them in the last 24h; `digest_worker()` runs daily (first startup only records a baseline so restarts never blast); manual `POST /api/crm/notifications/digest/run?window_hours=N` (manager) for on-demand/testing. **Per-import assignment emails were removed** — the digest replaces them (import still assigns + pushes are unaffected). Bulk reassign keeps its immediate notify. Emails send live via Resend.
 - **Change-history filter**: the Lead Detail **Change History** panel gained tabs — All / Edits / Reassignments / Status (`hist-tab-*`) — client-side filtering the updated/assigned/status entries.

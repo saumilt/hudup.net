@@ -394,6 +394,29 @@ async def restore_assign(data: RestoreAssignInput, user=Depends(MANAGER)):
     return {"ok": True, "restored": restored}
 
 
+class ResolveMismatchInput(BaseModel):
+    lead_ids: list[str] | None = None  # None/empty = every flagged lead
+
+
+@router.post("/leads/claim-mismatch/resolve")
+async def resolve_claim_mismatch(data: ResolveMismatchInput, user=Depends(MANAGER)):
+    """Accept Medicare's claim count on flagged leads — clears the mismatch flag.
+    The note already carries the Medicare value; this just resolves the flag."""
+    q = {"claim_mismatch": True}
+    if data.lead_ids:
+        q["id"] = {"$in": data.lead_ids}
+    ids = [d["id"] for d in await db.crm_leads.find(q, {"_id": 0, "id": 1}).to_list(20000)]
+    if not ids:
+        return {"ok": True, "resolved": 0}
+    await db.crm_leads.update_many({"id": {"$in": ids}}, {"$set": {
+        "claim_mismatch": False,
+        "claim_mismatch_resolved": {"at": now_iso(), "by_id": user["id"], "by_name": user.get("name")}}})
+    for lid in ids:
+        await log_activity(lid, activity("updated", user, "Accepted Medicare claim count (mismatch resolved)",
+                                         {"changes": [{"field": "claim_mismatch", "from": True, "to": False}]}))
+    return {"ok": True, "resolved": len(ids)}
+
+
 class ConvertInput(BaseModel):
     name: str | None = None
     value: float | None = None
