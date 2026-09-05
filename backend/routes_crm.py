@@ -168,7 +168,7 @@ async def list_leads(
     source: str | None = None, lead_manager_id: str | None = None,
     account_manager_id: str | None = None, tag: str | None = None,
     match: str | None = None, q: str | None = None, mine: bool = False,
-    state: str | None = None, tier: str | None = None,
+    state: str | None = None, tier: str | None = None, claim_mismatch: bool = False,
     sort: str = "last_activity_at", limit: int = 200,
 ):
     user = await get_current_user(request)
@@ -183,6 +183,8 @@ async def list_leads(
         query["state"] = state.upper()
     if tier:
         query["medicare_snapshot.tier_340b"] = tier
+    if claim_mismatch:
+        query["claim_mismatch"] = True
     if lead_manager_id:
         query["lead_manager_id"] = lead_manager_id
     if account_manager_id:
@@ -241,10 +243,17 @@ async def patch_lead(lead_id: str, data: LeadPatch, user=Depends(ANY_CRM)):
         patch["state"] = patch["state"].upper()
     if not patch:
         return {"ok": True}
-    r = await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})
-    if r.matched_count == 0:
+    old = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
+    if not old:
         raise HTTPException(404, "Lead not found")
-    await log_activity(lead_id, activity("updated", user, "Lead details updated", patch))
+    changes = []
+    for k, v in patch.items():
+        ov = old.get(k)
+        if ov != v:
+            changes.append({"field": k, "from": ov, "to": v})
+    await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})
+    summary = "Edited " + ", ".join(c["field"].replace("_", " ") for c in changes) if changes else "Lead details updated"
+    await log_activity(lead_id, activity("updated", user, summary, {"changes": changes}))
     return await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
 
 
@@ -340,9 +349,18 @@ async def bulk_assign(data: BulkAssignInput, user=Depends(MANAGER)):
     if not u:
         raise HTTPException(404, "Account Manager not found")
     r = await db.crm_leads.update_many({"id": {"$in": data.lead_ids}},
-                                       {"$set": {"account_manager_id": data.account_manager_id}})
+                                       {"$set": {"account_manager_id": data.account_manager_id,
+                                                 "account_manager_name": u.get("name"),
+                                                 "routing_reason": f"Reassigned to {u['name']} by {user.get('name')}",
+                                                 "routed_at": now_iso()}})
     for lid in data.lead_ids:
-        await log_activity(lid, activity("assigned", user, f"Assigned to Account Manager {u['name']}"))
+        await log_activity(lid, activity("assigned", user, f"Reassigned to {u['name']}"))
+    try:
+        from routes_push import notify_assignment_summary
+        await notify_assignment_summary(data.account_manager_id, r.modified_count,
+                                        "", user.get("name"))
+    except Exception:
+        pass
     return {"ok": True, "updated": r.modified_count}
 
 

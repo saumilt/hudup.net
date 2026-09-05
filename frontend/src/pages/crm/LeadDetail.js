@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import Softphone from "@/components/crm/Softphone";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil, AlertTriangle } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -86,6 +86,7 @@ export default function LeadDetail() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const comm = lead.comm || {};
+  const editHistory = (lead.activity || []).filter((a) => ["updated", "assigned", "status"].includes(a.kind));
   const sendEmail = async () => {
     if (!email.subject.trim() || !email.html.trim()) return toast.error("Subject and body required");
     setBusy(true);
@@ -231,7 +232,11 @@ export default function LeadDetail() {
         <div className="space-y-6 lg:col-span-2">
           {/* Medicare snapshot */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="mb-3 flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" /><h2 className="font-display font-bold text-slate-900">Medicare Match</h2></div>
+            <div className="mb-3 flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" /><h2 className="font-display font-bold text-slate-900">Medicare Match</h2>
+              {lead.claim_mismatch && (
+                <span data-testid="ld-claim-mismatch" title={lead.claim_mismatch_detail ? `Imported ${lead.claim_mismatch_detail.imported} · Medicare ${lead.claim_mismatch_detail.medicare}` : "Imported claim count differed from Medicare"} className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700"><AlertTriangle className="h-3 w-3" /> Claim mismatch{lead.claim_mismatch_detail ? `: imported ${lead.claim_mismatch_detail.imported} → ${lead.claim_mismatch_detail.medicare}` : ""}</span>
+              )}
+            </div>
             {lead.medicare_match_status === "matched" ? (
               <>
                 <div className="mb-3 flex items-center gap-2">
@@ -310,6 +315,27 @@ export default function LeadDetail() {
               </div>
             )}
             {lead.tags?.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{lead.tags.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{t}</span>)}</div>}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5" data-testid="ld-edit-history">
+            <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><History className="h-4 w-4 text-primary" /> Change History</h2>
+            {editHistory.length === 0 ? (
+              <p className="text-sm text-slate-400">No changes yet.</p>
+            ) : (
+              <ol className="space-y-3">
+                {editHistory.map((a, i) => (
+                  <li key={i} className="border-l-2 border-slate-100 pl-3 text-sm">
+                    <p className="text-slate-700">{a.summary}</p>
+                    {(a.meta?.changes || []).map((c, j) => (
+                      <p key={j} className="text-xs text-slate-500">
+                        <span className="capitalize text-slate-600">{c.field.replace(/_/g, " ")}</span>: <span className="text-slate-400 line-through">{String(c.from ?? "—")}</span> → <span className="font-semibold text-slate-700">{String(c.to ?? "—")}</span>
+                      </p>
+                    ))}
+                    <p className="mt-0.5 text-xs text-slate-400">{a.by_name} · {fmtDate(a.at)}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-5" data-testid="ld-completeness">

@@ -57,6 +57,38 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: str | No
         resp.raise_for_status()
 
 
+async def notify_assignment_summary(assignee_id: str, count: int, context: str = "", actor_name: str | None = None) -> None:
+    """Non-blocking summary notification (push + email) when N leads are assigned to one person."""
+    if not assignee_id or count <= 0:
+        return
+    from deps import db
+    user = await db.users.find_one({"id": assignee_id}, {"_id": 0, "email": 1, "name": 1})
+    if not user:
+        return
+    word = "lead" if count == 1 else "leads"
+    title = f"{count} new {word} assigned"
+    msg = f"{count} {word} {'was' if count == 1 else 'were'} assigned to you"
+    if context:
+        msg += f" {context}"
+    if actor_name:
+        msg += f" by {actor_name}"
+    msg += "."
+    try:
+        await send_push(recipients=[assignee_id],
+                        data={"title": title, "message": msg, "action_url": "/leads"})
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Assignment push failed (non-blocking): {e}")
+    try:
+        from emailer import send_email
+        if user.get("email"):
+            html = (f"<p>Hi {user.get('name') or 'there'},</p>"
+                    f"<p>{msg}</p>"
+                    f"<p>Sign in to BoothIQ to start working them.</p>")
+            await send_email(to=user["email"], subject=title, html=html)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Assignment email failed (non-blocking): {e}")
+
+
 async def notify_lead_assigned(am_id: str, lead: dict) -> None:
     """Non-blocking push when a lead is assigned/routed to a rep."""
     if not am_id:

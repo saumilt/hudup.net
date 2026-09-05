@@ -5,10 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { StatusBadge, PriorityTag, TierPill, Btn, Field, inputCls, EmptyState, Modal, fmtDate } from "@/components/crm/kit";
-import { Users2, Plus, UserCheck, Sparkles, Bookmark, Trash2 } from "lucide-react";
+import { Users2, Plus, UserCheck, Sparkles, Bookmark, Trash2, AlertTriangle } from "lucide-react";
 
 const US_STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"];
-const EMPTY_FILTERS = { status: "", priority: "", match: "", q: "", mine: false, state: "", tier: "", source: "" };
+const EMPTY_FILTERS = { status: "", priority: "", match: "", q: "", mine: false, state: "", tier: "", source: "", claim_mismatch: false };
 
 export default function Leads() {
   const { user } = useAuth();
@@ -18,6 +18,7 @@ export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [savedFilters, setSavedFilters] = useState([]);
+  const [reassign, setReassign] = useState({ open: false, ids: [] });
   const [sel, setSel] = useState({});
   const [ams, setAms] = useState([]);
   const [assignTo, setAssignTo] = useState("");
@@ -64,10 +65,15 @@ export default function Leads() {
 
   const bulkAssign = async () => {
     const ids = Object.keys(sel).filter((k) => sel[k]);
-    if (!ids.length || !assignTo) return toast.error("Select leads and an Account Manager");
+    if (!ids.length || !assignTo) return toast.error("Select leads and a person to assign to");
+    setReassign({ open: true, ids });
+  };
+  const doReassign = async () => {
+    const ids = reassign.ids;
     await api.post("/crm/leads/bulk-assign", { lead_ids: ids, account_manager_id: assignTo });
-    toast.success(`Assigned ${ids.length} lead(s)`);
-    setSel({}); load();
+    const who = ams.find((a) => a.id === assignTo)?.name || "the selected person";
+    toast.success(`Reassigned ${ids.length} lead(s) to ${who}`);
+    setReassign({ open: false, ids: [] }); setSel({}); load();
   };
   const bulkEnrich = async () => {
     const ids = Object.keys(sel).filter((k) => sel[k]);
@@ -135,6 +141,7 @@ export default function Leads() {
           <select data-testid="lead-filter-state" value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">State: all</option>{US_STATES.map((s) => <option key={s}>{s}</option>)}</select>
           <select data-testid="lead-filter-source" value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Source: all</option>{meta.sources.map((s) => <option key={s}>{s}</option>)}</select>
           <select data-testid="lead-filter-match" value={filters.match} onChange={(e) => setFilters({ ...filters, match: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Match: all</option><option value="matched">Matched</option><option value="unmatched">Unmatched</option></select>
+          <label className="flex items-center gap-1 text-sm text-slate-600" title="Leads whose imported claim count differed from Medicare"><input type="checkbox" data-testid="lead-filter-mismatch" checked={filters.claim_mismatch} onChange={(e) => setFilters({ ...filters, claim_mismatch: e.target.checked })} /> Claim mismatch</label>
           <Btn variant="ghost" onClick={() => setFilters(EMPTY_FILTERS)} data-testid="lead-filter-clear">Clear</Btn>
           {!isManager && <label className="flex items-center gap-1 text-sm text-slate-600"><input type="checkbox" checked={filters.mine} onChange={(e) => setFilters({ ...filters, mine: e.target.checked })} /> Mine</label>}
         </div>
@@ -164,7 +171,7 @@ export default function Leads() {
               <option value="">Assign selected to…</option>
               {ams.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
             </select>
-            <Btn variant="ghost" onClick={bulkAssign} data-testid="bulk-assign-btn">Assign</Btn>
+            <Btn variant="ghost" onClick={bulkAssign} data-testid="bulk-assign-btn">Reassign</Btn>
             <span className="mx-1 h-5 w-px bg-slate-200" />
             <Btn variant="dark" onClick={bulkEnrich} data-testid="bulk-enrich-btn"><Sparkles className="h-4 w-4" /> Bulk Enrich</Btn>
             <span className="mx-1 h-5 w-px bg-slate-200" />
@@ -194,7 +201,7 @@ export default function Leads() {
                   <tr key={l.id} data-testid={`lead-row-${l.id}`} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => nav(`/crm/leads/${l.id}`)}>
                     {isManager && <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={!!sel[l.id]} onChange={(e) => setSel({ ...sel, [l.id]: e.target.checked })} data-testid={`lead-select-${l.id}`} /></td>}
                     <td className="p-3 font-mono text-xs text-slate-500">{l.lead_number}</td>
-                    <td className="p-3"><span className="font-semibold text-slate-800">{l.org_name || `${l.contact_first || ""} ${l.contact_last || ""}`.trim() || "—"}</span><br /><span className="text-xs text-slate-400">{l.email || l.phone || ""}</span></td>
+                    <td className="p-3"><span className="font-semibold text-slate-800">{l.org_name || `${l.contact_first || ""} ${l.contact_last || ""}`.trim() || "—"}</span>{l.claim_mismatch && <span data-testid={`claim-mismatch-${l.id}`} title={l.claim_mismatch_detail ? `Imported ${l.claim_mismatch_detail.imported} · Medicare ${l.claim_mismatch_detail.medicare}` : "Imported claim count differed from Medicare"} className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700"><AlertTriangle className="h-3 w-3" /> Claim mismatch</span>}<br /><span className="text-xs text-slate-400">{l.email || l.phone || ""}</span></td>
                     <td className="p-3"><StatusBadge status={l.status} /></td>
                     <td className="p-3"><PriorityTag priority={l.priority} /></td>
                     <td className="p-3"><TierPill kind="" tier={snap.tier_340b} /></td>
@@ -208,6 +215,16 @@ export default function Leads() {
           </table>
         </div>
       </div>
+
+      <Modal open={reassign.open} onClose={() => setReassign({ open: false, ids: [] })} title="Reassign leads">
+        <p className="text-sm text-slate-600" data-testid="reassign-confirm-text">
+          Reassign <b>{reassign.ids.length}</b> lead{reassign.ids.length === 1 ? "" : "s"} to <b>{ams.find((a) => a.id === assignTo)?.name || "—"}</b>? They'll be notified by email and push.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Btn variant="ghost" onClick={() => setReassign({ open: false, ids: [] })}>Cancel</Btn>
+          <Btn onClick={doReassign} data-testid="reassign-confirm-btn">Reassign</Btn>
+        </div>
+      </Modal>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Lead">
         <Field label="Organization / practice"><input data-testid="nl-org" value={nl.org_name} onChange={(e) => setNl({ ...nl, org_name: e.target.value })} className={inputCls} /></Field>

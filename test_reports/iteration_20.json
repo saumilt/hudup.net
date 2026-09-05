@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 20 — BoothIQ v2.20 validation complete. Backend: 5/5 pytest pass (100%) — (1) POST /api/crm/leads/bulk-assign to a lead_manager (Ankit) returns {ok:true, updated:N}, sets account_manager_id + account_manager_name + routing_reason='Reassigned to <Person> by <Actor>' + routed_at on every lead, and logs an 'assigned' activity per lead ('Reassigned to Ankit'); push notify may 500 in preview due to placeholder EMERGENT_PUSH_KEY but is non-blocking as designed. (2) PATCH /api/crm/leads/{id} logs an 'updated' activity whose summary is 'Edited <field-names>' and meta.changes = [{field, from, to}, ...] with correct old→new values for org_name/priority/city/state; state is auto-uppercased (tx→TX). (3) Import claim mismatch: NPI 1528183746 imported with wrong Total Claims (555) vs Medicare 1943 flags the lead with claim_mismatch=true and claim_mismatch_detail={label:'Total Claims', imported:'555', medicare:'1943'}; importing the SAME NPI with the matching value does NOT flag. GET /api/crm/leads?claim_mismatch=true returns ONLY flagged leads. (4) Person-assignment on import → notify_assignment_summary is fire-and-forget; execute returns {created:1,...} and the created lead has account_manager_id=Ankit. Web (leadmanager@boothiq.com/639201 via REACT_APP_BACKEND_URL): (a) Leads page — lead-filter-mismatch checkbox present and narrows results (200→1 flagged); bulk-assign-am renders 12 options including 'Ankit (lead manager)'; selecting a lead + Ankit + clicking Reassign opens the confirm modal with reassign-confirm-text 'Reassign 1 lead to Ankit? They\\'ll be notified by email and push.' and reassign-confirm-btn; Cancel closes; confirming triggers bulk-assign, shows toast 'Reassigned 1 lead(s) to Ankit', clears selection, reloads list. (b) Lead Detail — ld-edit-history panel renders with per-field 'from → to' rows (Org Name: TEST_v220 WebFlow ... → TEST_v220 WebFlow Updated, Priority: Medium → High, etc.) after ld-edit → edit-save; ld-claim-mismatch renders on flagged leads (validated via Leads filter). Note: editHistory filter (LeadDetail.js:89) also includes kinds 'assigned' and 'status', so the 'Edit History' panel also shows 'Reassigned to Ankit' / status changes — intentional per code but the label 'Edit History' is slightly misleading (see minor). No console errors, no red screens.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Lead Detail", "issues": ["Section titled 'Edit History' also lists 'assigned' and 'status' activities (LeadDetail.js:89 filter includes ['updated','assigned','status']). Not a bug; label could be 'Change History' for accuracy, or the filter restricted to 'updated' only."]}
+      ]
+    },
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20_v220.py",
+    "/app/test_reports/pytest/pytest_iter20.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_crm.py:346-364 bulk_assign — Order of ops: update_many first, then log_activity per lead. If a caller supplies lead_ids that aren't within scope of the requesting user, they will still be updated because bulk-assign has no _lead_scope filter (MANAGER dependency assumed sufficient). For a lead_manager that's fine; consider guarding for other roles if MANAGER is ever broadened.",
+    "routes_crm.py:239-257 patch_lead — Diff computes changes from the DB state at read time. Two concurrent PATCHes could log overlapping diffs but the last-writer-wins in Mongo. Non-blocking for current UX.",
+    "routes_import.py:335-347 claim_mismatch is captured only when snap exists (matched Medicare) AND the note is a claim-count-shaped label. Detail format = {label, imported, medicare} as strings — matches frontend badge tooltip usage. Digit-only fallback via _to_num handles '1,943' and '1943' equivalently. Labels containing 'charge' are NOT in the exclude list, so 'Total Charge Claims' would be treated as a claim count (unlikely in real Medicare CSVs).",
+    "routes_import.py:378-385 execute person-assign notify wrapped in try/except and notify_assignment_summary itself never raises → import safe against push key placeholder. Verified in test_import_person_assignment_does_not_break_execute.",
+    "routes_push.py:60-89 notify_assignment_summary swallows both push and email exceptions independently (correct). Never raises to caller as documented. Would benefit from an idempotency_key on the bulk-assign path (currently only single-lead notify_lead_assigned has one) to avoid duplicate SuprSend deliveries on rapid re-clicks.",
+    "Leads.js:69 selecting Reassign opens modal via setReassign but does NOT recheck that the leads are still selected on confirm — cancel + row deselection then re-open flow could send stale ids; UX-only, low risk.",
+    "LeadDetail.js:89 editHistory filter is ['updated','assigned','status']. If the label 'Edit History' is meant strictly for field edits, restrict to ['updated']; otherwise rename the section header to 'Change History'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration20_v220.py",
+    "/app/test_reports/iteration_20.json",
+    "/app/test_reports/pytest/pytest_iter20.xml"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (7/7 checks: filter, badge count, bulk-select, confirm modal open, cancel, confirm+toast, edit history panel rendering)"},
+  "test_credentials": "leadmanager@boothiq.com / 639201 (from /app/memory/test_credentials.md). Ankit lead_manager = ankit@healthandmore.net.",
+  "seed_data_creation": "Backend tests created 4 TEST_v220 leads (2 for bulk-assign, 1 for patch/edit-history, plus 1 web test lead 'TEST_v220 WebFlow <ts>' that was then assigned to Ankit and edited). Import tests created 3 import jobs that each imported 1 real Medicare NPI (1528183746) and ROLLED BACK in-test — no residue from those. All persisted rows are prefixed 'TEST_v220' for easy cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "v2.20 is stable. Contracts to preserve: POST /api/crm/leads/bulk-assign {lead_ids, account_manager_id} → {ok:true, updated:N}; sets account_manager_id/name/routing_reason='Reassigned to X by Y'/routed_at + logs kind='assigned' activity per lead. PATCH /api/crm/leads/{id} logs kind='updated' activity with meta.changes=[{field,from,to}]. GET /api/crm/leads?claim_mismatch=true filters to leads with claim_mismatch=true. Import: _reconcile_claim_notes at routes_import.py:205 returns {label,imported,medicare} strings when there is a numeric mismatch; execute stores claim_mismatch + claim_mismatch_detail on the lead. notify_assignment_summary in routes_push.py:60 fires push+email, never raises. Web testIDs stable: Leads → lead-filter-mismatch, bulk-assign-am, bulk-assign-btn, reassign-confirm-text, reassign-confirm-btn, claim-mismatch-<leadId>. LeadDetail → ld-edit-history (also shows assigned+status activities per LeadDetail.js:89), ld-claim-mismatch on flagged leads. Push warns '500 EMERGENT_PUSH_KEY missing' in preview — EXPECTED and swallowed; do not treat as a bug in preview.",
+  "rca of the issue": "N/A — no bugs found. All 4 requested v2.20 features (bulk reassign to a person incl. lead_managers with confirmation, per-lead edit history with field-level from→to, import claim-mismatch flag+detail+filter+badges, and notify-on-assignment being non-blocking) work as specified. Both push and email notify_assignment_summary paths remain best-effort and do not break the endpoints they are called from."
+}

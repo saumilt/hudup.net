@@ -194,15 +194,25 @@ def _project(row: dict, mapping: dict) -> dict:
 import re as _re
 
 
+def _to_num(s):
+    try:
+        cleaned = _re.sub(r"[^0-9.\-]", "", str(s))
+        return float(cleaned) if cleaned not in ("", ".", "-") else None
+    except Exception:
+        return None
+
+
 def _reconcile_claim_notes(import_notes: list, snap: dict | None):
     """Medicare is authoritative for the total claim count: if a matched Medicare
-    record exists, override any imported 'total claims' note whose value disagrees."""
+    record exists, override any imported 'total claims' note whose value disagrees.
+    Returns a mismatch detail dict (or None) so the lead can be flagged."""
     if not snap:
-        return
+        return None
     med = snap.get("tot_clms")
-    if med in (None, ""):
-        return
-    med_str = str(med)
+    med_num = _to_num(med)
+    if med_num is None:
+        return None
+    med_disp = str(int(med_num)) if med_num.is_integer() else str(med_num)
     for n in import_notes:
         text = n.get("text") or ""
         label, _, value = text.partition(":")
@@ -211,9 +221,13 @@ def _reconcile_claim_notes(import_notes: list, snap: dict | None):
                           and not any(x in low for x in ("cost", "avg", "average", "per ", "rate", "amount", "$")))
         if not is_claim_count:
             continue
-        digits = _re.sub(r"[^0-9]", "", value)
-        if digits != med_str:
-            n["text"] = f"{label.strip()}: {med_str} (from Medicare)"
+        imp_num = _to_num(value)
+        if imp_num is None or abs(imp_num - med_num) <= 0.5:
+            continue
+        imp_disp = str(int(imp_num)) if imp_num.is_integer() else str(imp_num)
+        n["text"] = f"{label.strip()}: {med_disp} (from Medicare)"
+        return {"label": label.strip(), "imported": imp_disp, "medicare": med_disp}
+    return None
 
 
 @router.post("/{import_id}/validate")
@@ -318,7 +332,7 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                 "visibility": "team", "pinned": False, "created_at": now_iso(),
                 "edited_at": None, "edits": []})
         # Medicare is authoritative for the total claim count — correct any mismatching note.
-        _reconcile_claim_notes(import_notes, snap)
+        claim_mismatch = _reconcile_claim_notes(import_notes, snap)
         doc = {"id": lead_id, "lead_number": f"L-{num:05d}",
                "org_name": p.get("org_name"), "contact_first": p.get("contact_first"),
                "contact_last": p.get("contact_last"), "phone": p.get("phone"), "email": p.get("email"),
@@ -330,6 +344,7 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
                "city": p.get("city") or (snap or {}).get("city"),
                "state": (p.get("state") or (snap or {}).get("state") or "").upper() or None,
                "medicare_match_status": match_status, "matched_npi": matched_npi,
+               "claim_mismatch": bool(claim_mismatch), "claim_mismatch_detail": claim_mismatch,
                "dataset_year": (snap or {}).get("dataset_year"), "medicare_snapshot": snap,
                "comm": dict(DEFAULT_COMM), "import_job_id": import_id,
                "created_by": user["id"], "created_by_name": user.get("name"),
@@ -360,6 +375,14 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
         created_ids.append(lead_id)
         created += 1
     counts = {"created": created, "updated": updated, "skipped": skipped}
+    # Notify the assignee (email + push) when leads were handed to one person on import.
+    if distribute == "person" and assignee_id and created > 0:
+        try:
+            from routes_push import notify_assignment_summary
+            await notify_assignment_summary(assignee_id, created,
+                                            f"from import \"{job.get('filename')}\"", user.get("name"))
+        except Exception:
+            pass
     await db.import_jobs.update_one({"id": import_id},
                                     {"$set": {"created_ids": created_ids, "counts": counts,
                                               "status": "completed", "executed_at": now_iso()}})
