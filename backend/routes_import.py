@@ -131,8 +131,9 @@ class MappingInput(BaseModel):
     rule: str = "safe"  # safe (create new, skip existing) | refresh (fill missing on existing)
     source: str | None = None
     data_year: int | None = None
-    distribute: str = "route"  # route (territory + rr fallback) | equal (all reps) | person (one assignee)
+    distribute: str = "route"  # route (territory + rr fallback) | equal (round-robin) | person (one assignee)
     assignee_id: str | None = None
+    rr_user_ids: list[str] | None = None  # round-robin participants (equal mode); empty = all account managers
 
 
 @router.post("/{import_id}/mapping")
@@ -141,7 +142,7 @@ async def save_mapping(import_id: str, data: MappingInput, user=Depends(IMPORTER
     await db.import_jobs.update_one({"id": import_id}, {"$set": {
         "mapping": data.mapping, "rule": data.rule, "import_source": data.source,
         "data_year": data.data_year, "distribute": data.distribute,
-        "assignee_id": data.assignee_id, "status": "mapped"}})
+        "assignee_id": data.assignee_id, "rr_user_ids": data.rr_user_ids, "status": "mapped"}})
     return {"ok": True}
 
 
@@ -152,6 +153,7 @@ class PresetInput(BaseModel):
     data_year: int | None = None
     distribute: str = "route"
     assignee_id: str | None = None
+    rr_user_ids: list[str] | None = None
     rule: str = "safe"
 
 
@@ -164,7 +166,7 @@ async def list_presets(user=Depends(IMPORTER)):
 async def save_preset(data: PresetInput, user=Depends(IMPORTER)):
     doc = {"id": str(uuid.uuid4()), "name": data.name.strip(), "mapping": data.mapping,
            "source": data.source, "data_year": data.data_year, "distribute": data.distribute,
-           "assignee_id": data.assignee_id, "rule": data.rule,
+           "assignee_id": data.assignee_id, "rr_user_ids": data.rr_user_ids, "rule": data.rule,
            "created_by": user["id"], "created_at": now_iso()}
     await db.import_presets.update_one({"name": doc["name"]}, {"$set": doc}, upsert=True)
     return {"ok": True, "name": doc["name"]}
@@ -278,12 +280,20 @@ async def execute(import_id: str, user=Depends(IMPORTER)):
     if distribute == "person" and assignee_id:
         au = await db.users.find_one({"id": assignee_id}, {"_id": 0, "name": 1})
         assignee_name = au.get("name") if au else None
-    # Build the equal-distribution pool (active account managers / reps) once.
+    # Build the round-robin pool once. Managers may choose specific participants
+    # (any active account/lead manager or admin); otherwise default to all account managers.
     pool = []
     if distribute == "equal":
-        pu = await db.users.find(
-            {"role": "account_manager", "active": {"$ne": False}},
-            {"_id": 0, "id": 1, "name": 1}).sort("name", 1).to_list(500)
+        rr_ids = job.get("rr_user_ids") or []
+        if rr_ids:
+            pu = await db.users.find(
+                {"id": {"$in": rr_ids}, "active": {"$ne": False}},
+                {"_id": 0, "id": 1, "name": 1}).to_list(500)
+            pu.sort(key=lambda u: rr_ids.index(u["id"]) if u["id"] in rr_ids else 999)
+        else:
+            pu = await db.users.find(
+                {"role": "account_manager", "active": {"$ne": False}},
+                {"_id": 0, "id": 1, "name": 1}).sort("name", 1).to_list(500)
         pool = [(u["id"], u.get("name")) for u in pu]
     rr_idx = 0
     seen_npi, seen_email = set(), set()

@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 22 — BoothIQ v2.25 validation (Teams/Territories edit+delete + Import RR participants). Backend: 4/4 pytest pass (100%). Web UI: all requested flows pass end-to-end. (1) PATCH /api/crm/teams/{id} updates name+member_ids as admin; DELETE /api/crm/teams/{id} removes team; GET verifies persistence and deletion. (2) PATCH /api/crm/territories/{id} updates name/states/specialties with states upper-cased ('ca'→'CA'); PATCH on non-existent id → 404; DELETE removes territory; verified via GET list. (3) Import round-robin: with rr_user_ids=[lead_manager_id, account_manager_id] and 3-row CSV, execute rotates in exact order [LM, AM, LM] on the 3 created leads. (4) Import RR fallback: rr_user_ids=[] falls back to all active account managers only (no lead managers) — verified assigned owners belong to AM pool. Both imports were rolled back. Web (admin@boothiq.com/482913, REACT_APP_BACKEND_URL /crm/teams and /crm/import): (a) Teams page — team-create-btn opens modal titled 'New Team'; created team appears; team-edit-<id> opens modal titled 'Edit Team' with pre-filled name; team-save persists new name; team-delete-<id> triggers window.confirm and removes card. Same flow verified for terr-create-btn / terr-edit-<id> / terr-save / terr-delete-<id> with dynamic 'New Territory'/'Edit Territory' titles. (b) ImportWizard — after uploading a 2-row CSV (NPI, Organization), reached the mapping step; the Assignment dropdown (import-distribute) option value='equal' is labeled EXACTLY 'Round-robin across chosen people'; selecting 'equal' reveals import-rr-list containing 12 people with import-rr-<userId> checkboxes INCLUDING 4 lead_manager entries (Ankit, Ankit Modi, Fatema (new v2.25), Lead Manager); selecting 'person' reveals import-assignee dropdown. No console errors observed.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+    "mobile": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []}
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration22_v225.py",
+    "/app/test_reports/pytest/pytest_iter22.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_teams.py:42 update_team accepts arbitrary dict (data: dict) with only 'id' popped — safe today since UI only sends allowed fields, but consider a Pydantic model (TeamUpdate) so unknown/dangerous keys can't sneak into the document (e.g., a stray 'rr_cursor' or 'created_by' override).",
+    "routes_teams.py:42-45 update_team returns {ok:true} regardless of matched_count — territory PATCH correctly 404s on missing id (line 88-89); teams PATCH silently succeeds even when team_id doesn't exist. Consider mirroring the 404 check for teams.",
+    "routes_teams.py:49-52 delete_team also delete_many territories under it — this destructive cascade is not confirmed twice (only single window.confirm on frontend). Not a bug, but worth surfacing 'This will also delete N territories' in the client prompt.",
+    "routes_import.py:283-297 execute — pool builder correctly filters by active != False AND {id ∈ rr_user_ids}; ordering is preserved by re-sorting server-side (line 292). The frontend sends rr_user_ids in checkbox-click order, so RR order matches the UI check order. Good.",
+    "routes_import.py:286-297 — When rr_user_ids is a non-empty list but NONE of the ids are active/valid, pu ends up empty and the else branch is skipped, leaving pool=[] and the code silently falls through to the auto_route_lead fallback path at line 380. Consider validating that at least 1 participant resolves and returning a clear 400.",
+    "Teams.js:44 saveTeam validation 'Name and at least one member' also applies when editing to remove all members — expected behavior; documented."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration22_v225.py",
+    "/app/test_reports/iteration_22.json",
+    "/app/test_reports/pytest/pytest_iter22.xml"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (Teams+Territories CRUD via UI, ImportWizard RR list incl. lead managers, 'equal' label match, person-mode assignee dropdown)"},
+  "test_credentials": "admin@boothiq.com / 482913",
+  "seed_data_creation": "Backend tests created TEST_v225 teams/territories and 2 import jobs (rolled back inside test). UI tests created UITeam_/UITerr_/UITemp_ items and deleted them via the UI Delete buttons. No residual test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "v2.25 stable. Contracts verified: (1) PATCH/DELETE /api/crm/teams/{id} + PATCH/DELETE /api/crm/territories/{id} (admin/lead_manager). Territory PATCH uppercases states and 404s on missing id; team PATCH currently does NOT 404 on missing id (minor). (2) POST /api/imports/{id}/mapping accepts rr_user_ids: list[str]|None. (3) execute() with distribute='equal' builds pool from rr_user_ids preserving their given order; empty/None falls back to all active account_managers only. Web testIDs stable: Teams page — team-create-btn, team-card, team-edit-<id>, team-delete-<id>, team-name, team-save, terr-create-btn, terr-card, terr-edit-<id>, terr-delete-<id>, terr-name, terr-team, terr-save. Import wizard — import-file, import-upload, import-distribute (option value='equal' text='Round-robin across chosen people'), import-rr-list, import-rr-<userId>, import-assignee. Fatema (fatema@healthandmore.net, lead_manager) is present in the RR list.",
+  "rca of the issue": "N/A — no bugs found. Both v2.25 items work end-to-end. Minor code-review notes only (teams PATCH lacks 404 parity with territories; execute() should reject empty resolved pool)."
+}

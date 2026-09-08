@@ -20,6 +20,7 @@ export default function ImportWizard() {
   const [distribute, setDistribute] = useState("route");
   const [assignees, setAssignees] = useState([]);
   const [assigneeId, setAssigneeId] = useState("");
+  const [rrUserIds, setRrUserIds] = useState([]);
   const [valid, setValid] = useState(null);   // {counts, preview, total}
   const [result, setResult] = useState(null); // {created, updated, skipped}
   const [busy, setBusy] = useState(false);
@@ -38,6 +39,7 @@ export default function ImportWizard() {
     if (p.data_year) setYear(String(p.data_year));
     setDistribute(p.distribute || "route");
     setAssigneeId(p.assignee_id || "");
+    setRrUserIds(p.rr_user_ids || []);
     setRule(p.rule || "safe");
     toast.success(`Loaded preset "${p.name}"`);
   };
@@ -45,7 +47,7 @@ export default function ImportWizard() {
     const name = window.prompt("Save this mapping as a preset named:");
     if (!name || !name.trim()) return;
     try {
-      await api.post("/imports/presets", { name: name.trim(), mapping, source, data_year: year ? Number(year) : null, distribute, assignee_id: assigneeId || null, rule });
+      await api.post("/imports/presets", { name: name.trim(), mapping, source, data_year: year ? Number(year) : null, distribute, assignee_id: assigneeId || null, rr_user_ids: rrUserIds, rule });
       const r = await api.get("/imports/presets"); setPresets(r.data);
       toast.success("Preset saved");
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -75,7 +77,7 @@ export default function ImportWizard() {
     if (distribute === "person" && !assigneeId) return toast.error("Pick a person to assign the imported leads to");
     setBusy(true);
     try {
-      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule, source, data_year: year ? Number(year) : null, distribute, assignee_id: distribute === "person" ? (assigneeId || null) : null });
+      await api.post(`/imports/${job.import_id}/mapping`, { mapping, rule, source, data_year: year ? Number(year) : null, distribute, assignee_id: distribute === "person" ? (assigneeId || null) : null, rr_user_ids: distribute === "equal" ? rrUserIds : null });
       const r = await api.post(`/imports/${job.import_id}/validate`);
       setValid(r.data); setStep(2);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setBusy(false); }
@@ -171,7 +173,7 @@ export default function ImportWizard() {
                   <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Assignment</label>
                   <select data-testid="import-distribute" value={distribute} onChange={(e) => setDistribute(e.target.value)} className={inputCls}>
                     <option value="route">Territory routing (round-robin fallback)</option>
-                    <option value="equal">Assign equally to all reps (round-robin)</option>
+                    <option value="equal">Round-robin across chosen people</option>
                     <option value="person">Assign all to a specific person…</option>
                   </select>
                 </div>
@@ -182,6 +184,20 @@ export default function ImportWizard() {
                       <option value="">Select a person…</option>
                       {assignees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
                     </select>
+                  </div>
+                )}
+                {distribute === "equal" && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase text-slate-400">Round-robin across</label>
+                    <p className="mb-1 text-xs text-slate-400">Pick who to rotate leads between. Leave all unchecked to use every account manager.</p>
+                    <div data-testid="import-rr-list" className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                      {assignees.map((a) => (
+                        <label key={a.id} className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" data-testid={`import-rr-${a.id}`} checked={rrUserIds.includes(a.id)} onChange={(e) => setRrUserIds(e.target.checked ? [...rrUserIds, a.id] : rrUserIds.filter((x) => x !== a.id))} className="h-4 w-4 accent-primary" />
+                          {a.name}{a.role && a.role !== "account_manager" ? <span className="text-xs text-slate-400"> ({a.role.replace("_", " ")})</span> : null}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

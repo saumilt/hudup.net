@@ -6,7 +6,20 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
-## v2.23 (2026-06) — Reject & Keep imported claim (per-lead)
+## v2.25 (2026-06) — Import round-robin participant picker · new lead manager Fatema
+- **Round-robin across chosen people**: the import "equal" mode now round-robins across a manager-selected set of participants (`rr_user_ids` on MappingInput/PresetInput; execute builds the pool from those users in order, else defaults to all active account managers). The Import Wizard shows a checkbox list of assignees that INCLUDES lead managers + admins (relabeled option "Round-robin across chosen people"). Satisfies "pick exactly who it rotates across" + "include lead managers".
+- **New user Fatema** (fatema@healthandmore.net) created as **lead_manager** via the existing admin invite endpoint — temp PIN `125148` emailed via Resend, forced change on first login. (see test_credentials.md)
+- **Team PATCH 404** consistency fix (returns 404 on missing id, like territory PATCH).
+- Verified: testing agent iteration 22 — backend 4/4 pytest (team/territory edit+delete, RR rotation [LM,AM,LM], RR fallback to account managers) + web UI (teams edit/delete modals; import RR list showing 12 assignees incl. 4 lead managers with Fatema). Version → **v2.25**.
+
+
+
+- **Bug fix**: the Teams & Territories page only allowed CREATE — no edit/delete — and territories had no edit endpoint. Added `PATCH /api/crm/territories/{id}` (edit name/team/states/specialties; states uppercased). Teams already had PATCH+DELETE and territories had DELETE.
+- **Frontend**: every team card and territory card now has **Edit** + **Delete** actions (`team-edit-*`/`team-delete-*`/`terr-edit-*`/`terr-delete-*`); the New/Edit modals are shared with dynamic titles. Delete uses a confirm. Access is admin/super_admin/lead_manager (require_roles already includes admins).
+- Verified by main agent (self-test): curl as admin@boothiq.com — create/PATCH team, create/PATCH territory (states tx→[OK,TX]), delete both; screenshot confirmed Edit/Delete buttons on all cards. Version → **v2.24**.
+
+
+
 - **Keep imported number**: the importer now records the overridden note's `note_id` in `claim_mismatch_detail`. New `POST /api/crm/leads/claim-mismatch/keep-imported` (manager, per `lead_ids`) restores that note to the imported value (`"<label>: <imported> (source verified)"`), clears the flag, and stamps `claim_mismatch_resolved.kept="imported"`. The Mismatch Report gained per-row **"Keep imported"** vs **"Use Medicare"** actions (bulk "Accept Medicare's numbers (N)" unchanged; its resolve now stamps `kept="medicare"`). Lets managers keep the source figure when it's actually right.
 - Verified by main agent (self-test): curl — imported 555 vs Medicare 1943 (note overridden to 1943) → keep-imported → note "Total Claims: 555 (source verified)", flag cleared, resolved.kept="imported"; UI screenshot confirmed both per-row buttons. Rolled back the test import. NOT run through the testing agent (small feature on tested infra). Version → **v2.23**.
 

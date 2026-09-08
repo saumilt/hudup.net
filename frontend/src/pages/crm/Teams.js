@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle, BarChart3, Scale } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2 } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -26,6 +26,8 @@ export default function Teams() {
   const [modal, setModal] = useState(null);
   const [team, setTeam] = useState({ name: "", member_ids: [] });
   const [terr, setTerr] = useState({ name: "", states: "", specialties: "", team_id: "" });
+  const [teamEditId, setTeamEditId] = useState(null);
+  const [terrEditId, setTerrEditId] = useState(null);
 
   const load = useCallback(async () => {
     const [a, t, tr, q, b] = await Promise.all([
@@ -37,21 +39,40 @@ export default function Teams() {
   }, [scope]);
   useEffect(() => { load(); }, [load]);
 
-  const createTeam = async () => {
+  const openNewTeam = () => { setTeamEditId(null); setTeam({ name: "", member_ids: [] }); setModal("team"); };
+  const openEditTeam = (t) => { setTeamEditId(t.id); setTeam({ name: t.name, member_ids: t.member_ids || [] }); setModal("team"); };
+  const saveTeam = async () => {
     if (!team.name.trim() || !team.member_ids.length) return toast.error("Name and at least one member");
-    try { await api.post("/crm/teams", team); toast.success("Team created"); setModal(null); setTeam({ name: "", member_ids: [] }); load(); }
+    try {
+      if (teamEditId) { await api.patch(`/crm/teams/${teamEditId}`, team); toast.success("Team updated"); }
+      else { await api.post("/crm/teams", team); toast.success("Team created"); }
+      setModal(null); setTeamEditId(null); setTeam({ name: "", member_ids: [] }); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const deleteTeam = async (t) => {
+    if (!window.confirm(`Delete team "${t.name}"? Its territories will also be removed.`)) return;
+    try { await api.delete(`/crm/teams/${t.id}`); toast.success("Team deleted"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
-  const createTerr = async () => {
+  const openNewTerr = () => { setTerrEditId(null); setTerr({ name: "", states: "", specialties: "", team_id: "" }); setModal("terr"); };
+  const openEditTerr = (t) => { setTerrEditId(t.id); setTerr({ name: t.name, states: (t.states || []).join(", "), specialties: (t.specialties || []).join(", "), team_id: t.team_id || "" }); setModal("terr"); };
+  const saveTerr = async () => {
     if (!terr.name.trim() || !terr.team_id) return toast.error("Name and team required");
+    const payload = {
+      name: terr.name, team_id: terr.team_id,
+      states: terr.states.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
+      specialties: terr.specialties.split(",").map((s) => s.trim()).filter(Boolean),
+    };
     try {
-      await api.post("/crm/territories", {
-        name: terr.name, team_id: terr.team_id,
-        states: terr.states.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
-        specialties: terr.specialties.split(",").map((s) => s.trim()).filter(Boolean),
-      });
-      toast.success("Territory created"); setModal(null); setTerr({ name: "", states: "", specialties: "", team_id: "" }); load();
+      if (terrEditId) { await api.patch(`/crm/territories/${terrEditId}`, payload); toast.success("Territory updated"); }
+      else { await api.post("/crm/territories", payload); toast.success("Territory created"); }
+      setModal(null); setTerrEditId(null); setTerr({ name: "", states: "", specialties: "", team_id: "" }); load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const deleteTerr = async (t) => {
+    if (!window.confirm(`Delete territory "${t.name}"?`)) return;
+    try { await api.delete(`/crm/territories/${t.id}`); toast.success("Territory deleted"); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const routeUnassigned = async () => {
     try { const r = await api.post("/crm/leads/route-unassigned"); toast.success(`Routed ${r.data.routed} lead(s)`); load(); }
@@ -71,17 +92,23 @@ export default function Teams() {
     <div>
       <PageHeader title="Teams & Territories" subtitle="Hierarchy, round-robin routing and quotas">
         <Btn variant="ghost" onClick={routeUnassigned} data-testid="route-unassigned"><Shuffle className="h-4 w-4" /> Route Unassigned</Btn>
-        <Btn onClick={() => setModal("terr")} data-testid="terr-create-btn"><MapPin className="h-4 w-4" /> New Territory</Btn>
-        <Btn onClick={() => setModal("team")} data-testid="team-create-btn"><Plus className="h-4 w-4" /> New Team</Btn>
+        <Btn onClick={openNewTerr} data-testid="terr-create-btn"><MapPin className="h-4 w-4" /> New Territory</Btn>
+        <Btn onClick={openNewTeam} data-testid="team-create-btn"><Plus className="h-4 w-4" /> New Team</Btn>
       </PageHeader>
       <div className="grid gap-6 p-6 lg:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><Network className="h-4 w-4 text-primary" /> Teams</h2>
           {teams.length === 0 ? <p className="text-sm text-slate-400">No teams yet.</p> :
             teams.map((t) => (
-              <div key={t.id} data-testid="team-card" className="border-b border-slate-50 py-2">
-                <p className="font-semibold text-slate-800">{t.name}</p>
-                <p className="text-xs text-slate-400">{(t.member_ids || []).length} member(s)</p>
+              <div key={t.id} data-testid="team-card" className="flex items-center justify-between border-b border-slate-50 py-2">
+                <div>
+                  <p className="font-semibold text-slate-800">{t.name}</p>
+                  <p className="text-xs text-slate-400">{(t.member_ids || []).length} member(s){t.members?.length ? ` · ${t.members.map((m) => m.name).join(", ")}` : ""}</p>
+                </div>
+                <div className="flex flex-shrink-0 gap-1">
+                  <Btn variant="ghost" onClick={() => openEditTeam(t)} data-testid={`team-edit-${t.id}`}><Pencil className="h-3.5 w-3.5" /> Edit</Btn>
+                  <Btn variant="ghost" onClick={() => deleteTeam(t)} data-testid={`team-delete-${t.id}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Btn>
+                </div>
               </div>
             ))}
         </div>
@@ -89,9 +116,15 @@ export default function Teams() {
           <h2 className="mb-3 flex items-center gap-2 font-display font-bold text-slate-900"><MapPin className="h-4 w-4 text-primary" /> Territories</h2>
           {terrs.length === 0 ? <p className="text-sm text-slate-400">No territories yet.</p> :
             terrs.map((t) => (
-              <div key={t.id} data-testid="terr-card" className="border-b border-slate-50 py-2">
-                <p className="font-semibold text-slate-800">{t.name} <span className="text-xs font-normal text-slate-400">→ {teamName(t.team_id)}</span></p>
-                <p className="text-xs text-slate-400">{[(t.states || []).join(", "), (t.specialties || []).join(", ")].filter(Boolean).join(" · ") || "All"}</p>
+              <div key={t.id} data-testid="terr-card" className="flex items-center justify-between border-b border-slate-50 py-2">
+                <div>
+                  <p className="font-semibold text-slate-800">{t.name} <span className="text-xs font-normal text-slate-400">→ {teamName(t.team_id)}</span></p>
+                  <p className="text-xs text-slate-400">{[(t.states || []).join(", "), (t.specialties || []).join(", ")].filter(Boolean).join(" · ") || "All"}</p>
+                </div>
+                <div className="flex flex-shrink-0 gap-1">
+                  <Btn variant="ghost" onClick={() => openEditTerr(t)} data-testid={`terr-edit-${t.id}`}><Pencil className="h-3.5 w-3.5" /> Edit</Btn>
+                  <Btn variant="ghost" onClick={() => deleteTerr(t)} data-testid={`terr-delete-${t.id}`}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Btn>
+                </div>
               </div>
             ))}
         </div>
@@ -165,7 +198,7 @@ export default function Teams() {
         )}
       </div>
 
-      <Modal open={modal === "team"} onClose={() => setModal(null)} title="New Team">
+      <Modal open={modal === "team"} onClose={() => { setModal(null); setTeamEditId(null); }} title={teamEditId ? "Edit Team" : "New Team"}>
         <Field label="Team name"><input data-testid="team-name" value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} className={inputCls} /></Field>
         <Field label="Members (Account Managers)">
           <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
@@ -177,10 +210,10 @@ export default function Teams() {
             ))}
           </div>
         </Field>
-        <Btn onClick={createTeam} data-testid="team-save" className="mt-2 w-full justify-center">Create Team</Btn>
+        <Btn onClick={saveTeam} data-testid="team-save" className="mt-2 w-full justify-center">{teamEditId ? "Save Changes" : "Create Team"}</Btn>
       </Modal>
 
-      <Modal open={modal === "terr"} onClose={() => setModal(null)} title="New Territory">
+      <Modal open={modal === "terr"} onClose={() => { setModal(null); setTerrEditId(null); }} title={terrEditId ? "Edit Territory" : "New Territory"}>
         <Field label="Territory name"><input data-testid="terr-name" value={terr.name} onChange={(e) => setTerr({ ...terr, name: e.target.value })} className={inputCls} /></Field>
         <Field label="States (comma-separated, e.g. TX, OK)"><input value={terr.states} onChange={(e) => setTerr({ ...terr, states: e.target.value })} className={inputCls} /></Field>
         <Field label="Specialties (comma-separated)"><input value={terr.specialties} onChange={(e) => setTerr({ ...terr, specialties: e.target.value })} className={inputCls} /></Field>
@@ -190,7 +223,7 @@ export default function Teams() {
             {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </Field>
-        <Btn onClick={createTerr} data-testid="terr-save" className="mt-2 w-full justify-center">Create Territory</Btn>
+        <Btn onClick={saveTerr} data-testid="terr-save" className="mt-2 w-full justify-center">{terrEditId ? "Save Changes" : "Create Territory"}</Btn>
       </Modal>
     </div>
   );

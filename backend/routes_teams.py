@@ -41,7 +41,9 @@ async def create_team(data: TeamInput, user=Depends(MANAGER)):
 @router.patch("/teams/{team_id}")
 async def update_team(team_id: str, data: dict, user=Depends(MANAGER)):
     data.pop("id", None)
-    await db.teams.update_one({"id": team_id}, {"$set": data})
+    r = await db.teams.update_one({"id": team_id}, {"$set": data})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Team not found")
     return {"ok": True}
 
 
@@ -77,6 +79,17 @@ async def create_territory(data: TerritoryInput, user=Depends(MANAGER)):
     await db.territories.insert_one(dict(doc))
     doc.pop("_id", None)
     return doc
+
+
+@router.patch("/territories/{terr_id}")
+async def update_territory(terr_id: str, data: dict, user=Depends(MANAGER)):
+    data.pop("id", None)
+    if isinstance(data.get("states"), list):
+        data["states"] = [s.upper() for s in data["states"]]
+    r = await db.territories.update_one({"id": terr_id}, {"$set": data})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Territory not found")
+    return {"ok": True}
 
 
 @router.delete("/territories/{terr_id}")
