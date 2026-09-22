@@ -346,7 +346,9 @@ async def enrich_lead(lead_id: str, user=Depends(ANY_CRM)):
         if e.status == 404:
             await log_event("lead", lead_id, "enrichment", user, "Enrichment: no confident match")
             return {"matched": False, "message": e.message}
-        raise HTTPException(e.status, e.message)
+        return {"matched": False, "message": e.message}
+    except Exception as e:  # noqa: BLE001 — never surface a gateway 5xx to the client
+        return {"matched": False, "message": f"Enrichment unavailable: {e}"}
     await record_usage("enrichment")
     job = {"id": str(uuid.uuid4()), "lead_id": lead_id, "provider": "People Data Labs",
            "confidence": res["confidence"], "likelihood": res["likelihood"],

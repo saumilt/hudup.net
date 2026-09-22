@@ -6,7 +6,20 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
-## v2.25 (2026-06) — Import round-robin participant picker · new lead manager Fatema
+## v2.26 (2026-06) — AI Enrich from PDF/research + enrich bug hardening
+- **BUG FIX (Enrich Practice / Enrich gateway 502)**: `enrich_lead_company` and `enrich_lead` (PDL) now catch ALL exceptions and return HTTP 200 `{matched:false, error/message}` instead of a 5xx that surfaced as a Cloudflare "invalid/incomplete response" page. PDL simply having no data no longer looks like a crash.
+- **NEW: AI Enrich from a document** (`ai_enrich.py` + `routes_ai_enrich.py`): on a lead, "AI Enrich" accepts a **PDF upload**, a **file_url**, and/or **pasted research text** (e.g. a ChatGPT profile). pypdf extracts the text; the Emergent LLM (gpt-5.4) extracts contact/practice fields (email, work_email, phone, office_phone, website, linkedin, title, practice, address, city/state/zip, npi, specialty) + a summary + bullet notes — using ONLY what's in the material (no fabrication). Review modal → apply chosen fields (mirrored onto empty top-level lead fields + stored in `enrichment` with provenance) and everything else is saved as a prepended "🤖 AI update" note. Endpoints: `POST /leads/{id}/ai-enrich` (multipart) + `POST /leads/{id}/ai-enrich/accept`.
+- Verified: testing agent iteration 23 — backend 6/6 pytest (enrich no-5xx, ai-enrich from the Prem Soman PDF → email somanp@upmc.edu + NPI 1265407225 + summary + 30+ notes, accept applies + adds note, empty-input → clean 400) + web UI (AI Enrich modal end-to-end, Data Completeness 33%→56%). Agent fixed a duplicate `ai` useState in LeadDetail.js. Version → **v2.26**.
+- pypdf added to requirements; backend restarted.
+
+### ⏳ CONFIRMED-BUT-NOT-YET-BUILT (next up — user approved in this session)
+- **Phase 1**: all roles (incl. account managers) can view ALL leads; add City + Assigned-user filters (state exists).
+- **Phase 2 (owner/closer model)**: owner=account manager; add a Lead Manager as "Closer" + a second AM collaborator; admin toggles "both work" vs "owner only"; any account manager can add a closer (Q1=b); closer/collaborator get FULL edit (Q2=b); closers/collaborators can add appointments + notes.
+- **Phase 3 (Medicare filters)**: multi-select State dropdown → cascading multi City (cities within chosen states) → multi 340B color/tier; grant Account Managers access to Medicare Search.
+- **Admin edit/archive/territory**: admin can edit + archive leads AND opportunities; admin can change a lead's territory/team (currently non-editable).
+
+
+
 - **Round-robin across chosen people**: the import "equal" mode now round-robins across a manager-selected set of participants (`rr_user_ids` on MappingInput/PresetInput; execute builds the pool from those users in order, else defaults to all active account managers). The Import Wizard shows a checkbox list of assignees that INCLUDES lead managers + admins (relabeled option "Round-robin across chosen people"). Satisfies "pick exactly who it rotates across" + "include lead managers".
 - **New user Fatema** (fatema@healthandmore.net) created as **lead_manager** via the existing admin invite endpoint — temp PIN `125148` emailed via Resend, forced change on first login. (see test_credentials.md)
 - **Team PATCH 404** consistency fix (returns 404 on missing id, like territory PATCH).

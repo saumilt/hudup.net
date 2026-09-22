@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import Softphone from "@/components/crm/Softphone";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil, AlertTriangle } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil, AlertTriangle, FileText } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -26,11 +26,35 @@ export default function LeadDetail() {
   const [text, setText] = useState("");
   const [enrich, setEnrich] = useState({ loading: false, result: null, picked: {} });
   const [busy, setBusy] = useState(false);
-  const [ai, setAi] = useState({ busy: false, prep: null, brief: null });
+  const [ai, setAi] = useState({ busy: false, prep: null, brief: null, open: false, text: "", file: null, result: null, pick: [] });
   const [agent, setAgent] = useState({ busy: false, plan: null, picked: {} });
   const [editOpen, setEditOpen] = useState(false);
   const [edit, setEdit] = useState({});
   const [histFilter, setHistFilter] = useState("all");
+
+  const runAiEnrich = async () => {
+    setAi((s) => ({ ...s, busy: true, result: null }));
+    try {
+      const fd = new FormData();
+      if (ai.text) fd.append("text", ai.text);
+      if (ai.file) fd.append("file", ai.file);
+      const r = await api.post(`/crm/leads/${id}/ai-enrich`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const found = r.data.found || {};
+      setAi((s) => ({ ...s, busy: false, result: r.data, pick: Object.keys(found) }));
+    } catch (e) {
+      setAi((s) => ({ ...s, busy: false }));
+      toast.error(formatApiError(e.response?.data?.detail) || "AI enrichment failed");
+    }
+  };
+  const applyAiEnrich = async () => {
+    try {
+      const r = await api.post(`/crm/leads/${id}/ai-enrich/accept`, { job_id: ai.result.job_id, fields: ai.pick, save_note: true });
+      toast.success(`Applied ${r.data.applied.length} field(s)` + (r.data.note_added ? " + AI note" : ""));
+      setAi({ ...ai, open: false, text: "", file: null, busy: false, result: null, pick: [] });
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
 
   const load = useCallback(async () => {
     const r = await api.get(`/crm/leads/${id}`);
@@ -228,6 +252,7 @@ export default function LeadDetail() {
           <Btn data-testid="action-agent" variant="dark" onClick={runAgent}><Bot className="h-4 w-4" /> AI Agent</Btn>
           <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
           <Btn data-testid="action-enrich-company" variant="dark" onClick={runCompanyEnrich}><Building2 className="h-4 w-4" /> Enrich Practice</Btn>
+          <Btn data-testid="action-ai-enrich" variant="dark" onClick={() => setAi((s) => ({ ...s, open: true, text: "", file: null, busy: false, result: null, pick: [] }))}><FileText className="h-4 w-4" /> AI Enrich</Btn>
         </div>
       </header>
 
@@ -414,6 +439,45 @@ export default function LeadDetail() {
           </section>
         </div>
       </div>
+
+      <Modal open={ai.open} onClose={() => setAi({ ...ai, open: false })} title="AI Enrich — from research or PDF" wide>
+        {!ai.result ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">Paste research (e.g. from ChatGPT) and/or upload a PDF profile. AI extracts contact & practice details; everything else is saved as an <b>AI update</b> note. It only uses what's in the material — it won't invent data.</p>
+            <Field label="Research text (optional)">
+              <textarea data-testid="ai-enrich-text" value={ai.text} onChange={(e) => setAi({ ...ai, text: e.target.value })} rows={6} className={inputCls} placeholder="Paste the physician's profile / research here…" />
+            </Field>
+            <Field label="Or upload a PDF / text file">
+              <input data-testid="ai-enrich-file" type="file" accept=".pdf,.txt,.md" onChange={(e) => setAi({ ...ai, file: e.target.files?.[0] || null })} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold" />
+            </Field>
+            <Btn onClick={runAiEnrich} data-testid="ai-enrich-run" disabled={ai.busy || (!ai.text && !ai.file)} className="w-full justify-center">{ai.busy ? "Analyzing…" : "Run AI Enrich"}</Btn>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {Object.keys(ai.result.found || {}).length === 0 ? (
+              <p className="text-sm text-amber-600">No contact fields were found in the material.</p>
+            ) : (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Contact / practice fields found — pick what to apply</p>
+                <div className="space-y-1 rounded-lg border border-slate-200 p-2">
+                  {Object.entries(ai.result.found).map(([k, v]) => (
+                    <label key={k} className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" data-testid={`ai-pick-${k}`} checked={ai.pick.includes(k)} onChange={(e) => setAi((s) => ({ ...s, pick: e.target.checked ? [...s.pick, k] : s.pick.filter((x) => x !== k) }))} className="mt-1 h-4 w-4 accent-primary" />
+                      <span><span className="capitalize text-slate-500">{k.replace(/_/g, " ")}:</span> <span className="font-semibold text-slate-800">{String(v)}</span></span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {ai.result.summary && <div><p className="mb-1 text-xs font-semibold uppercase text-slate-400">Summary (saved as AI note)</p><p className="rounded-lg bg-slate-50 p-2 text-sm text-slate-700">{ai.result.summary}</p></div>}
+            {(ai.result.notes || []).length > 0 && <div><p className="mb-1 text-xs font-semibold uppercase text-slate-400">Also saved to the AI note</p><ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-600">{ai.result.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
+            <div className="flex gap-2">
+              <Btn variant="ghost" onClick={() => setAi({ ...ai, result: null, pick: [] })}>Back</Btn>
+              <Btn onClick={applyAiEnrich} data-testid="ai-enrich-apply" className="flex-1 justify-center">Apply + save AI note</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Lead" wide>
         <div className="grid grid-cols-2 gap-3">

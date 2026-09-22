@@ -1,0 +1,47 @@
+{
+  "summary": "v2.26 tested end-to-end (backend + web). Backend (pytest 6/6 pass): (1) POST /api/crm/leads/{id}/enrich-company and POST /api/crm/leads/{id}/enrich now return HTTP 200 with matched:false on provider failure — no more Cloudflare 502; (2) POST /api/crm/leads/{id}/ai-enrich extracts contact + notes from the Prem Soman PDF via file_url (email=somanp@upmc.edu, npi=1265407225, 30+ notes, source_chars ~5k); (3) ai-enrich/accept applies chosen fields into lead.enrichment, mirrors onto top-level, and prepends an 'AI update:' note; (4) validation with no file/text/url on empty lead returns 400 (not 5xx); (5) text-only enrichment works. Web frontend: fixed a compile-blocking duplicate `ai` useState declaration in LeadDetail.js that was preventing the entire lead-detail page from rendering; then ran the full flow as account_manager — Enrich Practice returned no 502, AI Enrich modal opened, extracted 12 contact fields from pasted research text in ~4s, Apply persisted the fields (Data Completeness 33% → 56%) and 'AI update:' note was prepended to Notes.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [
+        {
+          "component": "LeadDetail",
+          "issue": "Duplicate `const [ai, setAi] = useState(...)` declarations (lines 29 and 34) caused a SyntaxError — the ENTIRE /crm/leads/{id} page failed to compile with 'Identifier ai has already been declared'. Any user opening a lead detail saw a red Webpack error overlay instead of the page. Fixed by merging the two useState objects into one on line 29. Reference: /app/frontend/src/pages/crm/LeadDetail.js:29-34",
+          "selector": "N/A (compile-time)",
+          "priority": "CRITICAL"
+        }
+      ],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration23_ai_enrich.py",
+    "/app/test_reports/pytest/iteration23.xml"
+  ],
+  "action_items": [
+    "Review merged `ai` state in LeadDetail.js (line 29) — I combined the pre-existing { busy, prep, brief } with the new AI Enrich fields { open, text, file, result, pick }; note that `ai.busy` is now SHARED across AI Draft Email, AI Prep Call, AI Draft Text, Research Brief and AI Enrich flows — so running one will disable/gray-out the others until it completes. If independence is needed, split into separate state slices (e.g., `aiEnrich` / `aiPrep`).",
+    "Consider making the compile-time duplicate identifier issue impossible by wiring `eslint --max-warnings=0` (or `no-redeclare`) into CI so future merges can't ship a broken LeadDetail again."
+  ],
+  "critical_code_review_comments": [
+    "LeadDetail.js is 628 lines and mixes many concerns (email/call/text/research/enrich/AI-enrich/edit modals + status + assign). Consider extracting modals into per-file components.",
+    "In /api/crm/leads/{id}/ai-enrich (routes_ai_enrich.py:54) the outer try still raises HTTPException(502) on LLM failure — this is fine because it is our controlled error, but if you want ZERO 5xx surface (matching the enrich-company hardening) you could return 200 {job_id:null, error:...}. Current behavior is acceptable and returns detail, not a gateway HTML page.",
+    "routes_ai_enrich._TOP maps work_email → email but the accept loop applies fields in list order; if the user picks both `email` (null) and `work_email` in some cases, top-level email may still be filled correctly, but order is not deterministic — consider preferring work_email over email explicitly."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/crm/LeadDetail.js",
+    "/app/backend/tests/test_iteration23_ai_enrich.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100% (after fixing duplicate useState)"},
+  "test_credentials": "accountmanager@boothiq.com / 528174, leadmanager@boothiq.com / 639201, admin@boothiq.com / 482913",
+  "seed_data_creation": "Created one throwaway test lead (id=fc93b073-45f7-4c41-9efe-6425732cdcc1, L-00482, org='TEST_UI AI Enrich Lead') assigned to account_manager. After UI apply-flow it holds an 'AI update' note + enrichment fields for Dr. Prem Soman. Status moved to Disqualified to hide from active queues. DELETE /api/crm/leads/{id} is Method Not Allowed so hard-delete wasn't possible; main agent can remove it via the DB or Admin console if desired.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "v2.26 flows verified. If main agent adjusts the merged `ai` state in LeadDetail.js, re-run: (1) open a lead as account_manager → click 'AI Enrich' → paste text → Run → Apply — verify the toast, notes list gets an 'AI update' note, and Data Completeness increases; (2) click 'Enrich Practice' → verify friendly no-match copy (no 502). Backend regression at /app/backend/tests/test_iteration23_ai_enrich.py.",
+  "rca of the issue": "The v2.26 feature added a new `[ai, setAi] = useState({ open, text, file, busy, result, pick })` at LeadDetail.js:34 without noticing an existing `[ai, setAi] = useState({ busy, prep, brief })` at line 29 used by AI Draft Email, AI Prep Call, AI Draft Text and Research Brief. Babel raised 'Identifier ai has already been declared' → LeadDetail.js failed to compile → the whole lead-detail page rendered a red Webpack overlay in preview. Reproduction: (before fix) navigate to /crm/leads/{any-id} — the page never mounts. Mitigation applied: merged both objects into a single useState on line 29 so all existing usages continue to work and the AI Enrich modal now reads/writes ai.open/text/file/result/pick on the same slice. Follow-up recommended: split into two state slices if you need independent `busy` flags per AI feature."
+}

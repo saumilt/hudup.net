@@ -28,6 +28,7 @@ from routes_campaigns import router as campaigns_router, public_router as campai
 from routes_push import router as push_router
 from routes_voice import router as voice_router
 from routes_digest import router as digest_router, digest_worker
+from routes_ai_enrich import router as ai_enrich_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
 
@@ -87,6 +88,7 @@ app.include_router(campaigns_public_router)
 app.include_router(push_router)
 app.include_router(voice_router)
 app.include_router(digest_router)
+app.include_router(ai_enrich_router)
 
 
 @app.websocket("/api/ws/{room}")

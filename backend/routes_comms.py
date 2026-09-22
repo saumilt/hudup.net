@@ -29,7 +29,9 @@ async def enrich_lead_company(lead_id: str, user=Depends(ANY_CRM)):
     except EnrichmentError as e:
         if e.status == 404:
             return {"matched": False, "found": {}}
-        raise HTTPException(e.status if e.status < 500 else 502, e.message)
+        return {"matched": False, "found": {}, "error": e.message}
+    except Exception as e:  # noqa: BLE001 — never surface a gateway 5xx to the client
+        return {"matched": False, "found": {}, "error": f"Enrichment unavailable: {e}"}
     job_id = str(uuid.uuid4())
     await db.enrichment_jobs.insert_one({
         "id": job_id, "lead_id": lead_id, "kind": "company", "total": 1, "done": 1,
