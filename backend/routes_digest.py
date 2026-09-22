@@ -1,18 +1,31 @@
 """Daily assignment digest: one summary email per rep of leads assigned to them
-in the last 24h (replaces per-import assignment emails)."""
+in the last 24h (replaces per-import assignment emails). Admins pick the send time."""
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends
+from zoneinfo import ZoneInfo
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
 
-from deps import db, require_roles
-from crm_common import now_iso
+from deps import db, require_roles, require_admin
 
 logger = logging.getLogger("boothiq")
 router = APIRouter(prefix="/api/crm/notifications")
 MANAGER = require_roles("lead_manager")
 
 DIGEST_KEY = "assignment_digest"
+DEFAULT_DIGEST = {"enabled": True, "hour": 8, "minute": 0, "tz": "America/New_York"}
+
+
+async def _digest_settings() -> dict:
+    s = await db.app_settings.find_one({"_id": DIGEST_KEY}) or {}
+    return {
+        "enabled": s.get("enabled", DEFAULT_DIGEST["enabled"]),
+        "hour": int(s.get("hour", DEFAULT_DIGEST["hour"])),
+        "minute": int(s.get("minute", DEFAULT_DIGEST["minute"])),
+        "tz": s.get("tz") or DEFAULT_DIGEST["tz"],
+        "last_run_date": s.get("last_run_date"),
+    }
 
 
 async def run_assignment_digest(window_hours: int = 24) -> dict:
@@ -59,22 +72,61 @@ async def trigger_digest(window_hours: int = 24, user=Depends(MANAGER)):
     return await run_assignment_digest(window_hours)
 
 
+@router.get("/digest/settings")
+async def get_digest_settings(user=Depends(MANAGER)):
+    return await _digest_settings()
+
+
+class DigestSettings(BaseModel):
+    enabled: bool = True
+    hour: int = 8
+    minute: int = 0
+    tz: str = "America/New_York"
+
+
+@router.put("/digest/settings")
+async def put_digest_settings(data: DigestSettings, request: Request):
+    """Admin-only: set whether/when the daily assignment digest goes out."""
+    await require_admin(request)
+    hour = max(0, min(23, int(data.hour)))
+    minute = max(0, min(59, int(data.minute)))
+    try:
+        ZoneInfo(data.tz)
+        tz = data.tz
+    except Exception:  # noqa: BLE001
+        tz = DEFAULT_DIGEST["tz"]
+    await db.app_settings.update_one(
+        {"_id": DIGEST_KEY},
+        {"$set": {"enabled": bool(data.enabled), "hour": hour, "minute": minute, "tz": tz}},
+        upsert=True)
+    return await _digest_settings()
+
+
 async def digest_worker():
-    """Run the assignment digest once per day. First encounter only records the
-    baseline (no send) so a restart never blasts a digest."""
+    """Send the assignment digest once per day at the admin-configured local time.
+    The first encounter records a baseline date (no send) so restarts never blast."""
     while True:
-        await asyncio.sleep(3600)  # hourly check
+        await asyncio.sleep(300)  # check every 5 minutes
         try:
-            setting = await db.app_settings.find_one({"_id": DIGEST_KEY})
-            now = datetime.now(timezone.utc)
-            last = setting.get("last_run") if setting else None
+            s = await _digest_settings()
+            if not s.get("enabled"):
+                continue
+            try:
+                tz = ZoneInfo(s["tz"])
+            except Exception:  # noqa: BLE001
+                tz = ZoneInfo(DEFAULT_DIGEST["tz"])
+            now_local = datetime.now(tz)
+            today = now_local.date().isoformat()
+            last = s.get("last_run_date")
             if last is None:
                 await db.app_settings.update_one(
-                    {"_id": DIGEST_KEY}, {"$set": {"last_run": now.isoformat()}}, upsert=True)
+                    {"_id": DIGEST_KEY}, {"$set": {"last_run_date": today}}, upsert=True)
                 continue
-            if (now - datetime.fromisoformat(last)) >= timedelta(hours=24):
+            if last == today:
+                continue
+            if (now_local.hour, now_local.minute) >= (s["hour"], s["minute"]):
                 await run_assignment_digest(24)
                 await db.app_settings.update_one(
-                    {"_id": DIGEST_KEY}, {"$set": {"last_run": now.isoformat()}}, upsert=True)
+                    {"_id": DIGEST_KEY}, {"$set": {"last_run_date": today}}, upsert=True)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Digest worker error (non-blocking): {e}")

@@ -169,6 +169,7 @@ async def list_leads(
     match: str | None = None, q: str | None = None, mine: bool = False,
     state: str | None = None, tier: str | None = None, claim_mismatch: bool = False,
     city: str | None = None, archived: bool = False,
+    closer_id: str | None = None, has_closer: bool = False,
     sort: str = "last_activity_at", limit: int = 200,
 ):
     user = await get_current_user(request)
@@ -188,6 +189,10 @@ async def list_leads(
         query["medicare_snapshot.tier_340b"] = tier
     if claim_mismatch:
         query["claim_mismatch"] = True
+    if closer_id:
+        query["closer_id"] = closer_id
+    if has_closer:
+        query["closer_id"] = {"$nin": [None, ""]}
     if lead_manager_id:
         query["lead_manager_id"] = lead_manager_id
     if account_manager_id:

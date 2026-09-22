@@ -6,7 +6,7 @@ import { APP_VERSION } from "@/version";
 import {
   LayoutDashboard, Users2, Target, CalendarClock, Building2, Search,
   Activity, LogOut, Settings2, UserCog, Radio, Plus, ChevronDown, Grid3x3,
-  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3, PhoneCall, Zap, Compass, TrendingUp, Network, Megaphone, AlertTriangle,
+  UserPlus, CheckSquare, CalendarPlus, Stethoscope, Upload, Workflow, Inbox, BarChart3, PhoneCall, Zap, Compass, TrendingUp, Network, Megaphone, AlertTriangle, Handshake, Archive,
 } from "lucide-react";
 
 const ROLE_LABEL = {
@@ -166,12 +166,20 @@ export default function CrmShell() {
             </NavLink>
           )}
           {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
+            <NavLink to="/crm/closer-queue" data-testid="nav-closer-queue" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+              <Handshake className="h-4 w-4" /> Closer Queue
+            </NavLink>
+          )}
+          {(["admin", "super_admin", "lead_manager"].includes(user?.role)) && (
             <NavLink to="/crm/mismatch-report" data-testid="nav-mismatch-report" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
               <AlertTriangle className="h-4 w-4" /> Mismatch Report
             </NavLink>
           )}
           {["admin", "super_admin"].includes(user?.role) && (
             <>
+              <NavLink to="/crm/archive" data-testid="nav-archive" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
+                <Archive className="h-4 w-4" /> Archive Bin
+              </NavLink>
               <NavLink to="/crm/users" data-testid="nav-users" className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? "bg-primary/10 text-primary" : "text-slate-600 hover:bg-slate-50"}`}>
                 <UserCog className="h-4 w-4" /> Users & Roles
               </NavLink>

@@ -102,7 +102,17 @@ export default function LeadDetail() {
     toast.success("Collaborators updated"); load();
   };
   const setMode = async (val) => { await assign("collaboration_mode", val); };
-  const setTerritory = async (val) => { await assign("territory_id", val); };
+  const setTerritory = async (val) => {
+    await api.post(`/crm/leads/${id}/assign`, { territory_id: val });
+    toast.success("Territory updated");
+    if (isAdmin && val && window.confirm("Reassign this lead to that territory's team automatically?")) {
+      try {
+        const r = await api.post(`/crm/leads/${id}/route-to-territory`);
+        toast.success(`Assigned to ${r.data.account_manager_name || "a rep"}${r.data.team_name ? ` (${r.data.team_name})` : ""}`);
+      } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+    }
+    load();
+  };
   const archiveLead = async () => {
     if (!window.confirm(lead.archived ? "Unarchive this lead?" : "Archive this lead? It will be hidden from the leads list.")) return;
     try { await api.post(`/crm/leads/${id}/archive`, { archived: !lead.archived }); toast.success(lead.archived ? "Unarchived" : "Archived"); load(); }

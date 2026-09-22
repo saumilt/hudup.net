@@ -1,11 +1,11 @@
 """Wave 9 — Territories & Teams: hierarchy, round-robin routing, quotas."""
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from pymongo import ReturnDocument
 
-from deps import db, require_roles
+from deps import db, require_roles, require_admin
 from crm_common import now_iso, log_event
 
 router = APIRouter(prefix="/api/crm")
@@ -211,6 +211,33 @@ async def route_unassigned(user=Depends(MANAGER)):
         if await auto_route_lead(lead, user, source_kind="bulk"):
             n += 1
     return {"ok": True, "routed": n}
+
+
+@router.post("/leads/{lead_id}/route-to-territory")
+async def route_to_territory(lead_id: str, request: Request):
+    """Admin: assign a lead to a member of its territory's team (round-robin)."""
+    user = await require_admin(request)
+    lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    terr_id = lead.get("territory_id")
+    if not terr_id:
+        raise HTTPException(400, "Lead has no territory set")
+    terr = await db.territories.find_one({"id": terr_id}, {"_id": 0})
+    if not terr:
+        raise HTTPException(404, "Territory not found")
+    team = await db.teams.find_one({"id": terr.get("team_id")})
+    if not team:
+        raise HTTPException(400, "This territory isn't linked to a team")
+    am_id = await _rr_team_pick(team)
+    if not am_id:
+        raise HTTPException(400, "The territory's team has no members")
+    await _apply_assignment(
+        lead, am_id, team["id"], user,
+        f"Assigned to {team['name']} — territory “{terr['name']}” (admin)")
+    am = await db.users.find_one({"id": am_id}, {"_id": 0, "name": 1})
+    return {"ok": True, "account_manager_id": am_id,
+            "account_manager_name": (am or {}).get("name"), "team_name": team.get("name")}
 
 
 @router.get("/routing/balance")

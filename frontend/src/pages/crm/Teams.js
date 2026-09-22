@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2 } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2, Clock, Send } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -17,6 +18,8 @@ function Bar({ actual, target, fmt }) {
 }
 
 export default function Teams() {
+  const { user } = useAuth();
+  const isAdmin = ["admin", "super_admin"].includes(user?.role);
   const [ams, setAms] = useState([]);
   const [teams, setTeams] = useState([]);
   const [terrs, setTerrs] = useState([]);
@@ -28,14 +31,17 @@ export default function Teams() {
   const [terr, setTerr] = useState({ name: "", states: "", specialties: "", team_id: "" });
   const [teamEditId, setTeamEditId] = useState(null);
   const [terrEditId, setTerrEditId] = useState(null);
+  const [digest, setDigest] = useState(null);
 
   const load = useCallback(async () => {
-    const [a, t, tr, q, b] = await Promise.all([
+    const [a, t, tr, q, b, d] = await Promise.all([
       api.get("/users?role=account_manager"), api.get("/crm/teams"),
       api.get("/crm/territories"), api.get("/crm/quotas/attainment"),
       api.get("/crm/routing/balance", { params: { scope } }),
+      api.get("/crm/notifications/digest/settings").catch(() => ({ data: null })),
     ]);
     setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data); setBal(b.data);
+    if (d.data) setDigest(d.data);
   }, [scope]);
   useEffect(() => { load(); }, [load]);
 
@@ -88,6 +94,24 @@ export default function Teams() {
   };
   const teamName = (id) => (teams.find((t) => t.id === id) || {}).name || "—";
 
+  const saveDigest = async () => {
+    try {
+      const r = await api.put("/crm/notifications/digest/settings", {
+        enabled: digest.enabled, hour: Number(digest.hour), minute: Number(digest.minute), tz: digest.tz,
+      });
+      setDigest(r.data); toast.success("Digest schedule saved");
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const sendDigestNow = async () => {
+    try { const r = await api.post("/crm/notifications/digest/run"); toast.success(`Digest sent to ${r.data.reps_notified} rep(s) · ${r.data.total_leads} lead(s)`); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const TZ_OPTS = [
+    ["America/New_York", "Eastern (New York)"], ["America/Chicago", "Central (Chicago)"],
+    ["America/Denver", "Mountain (Denver)"], ["America/Los_Angeles", "Pacific (Los Angeles)"],
+    ["America/Phoenix", "Arizona (Phoenix)"], ["UTC", "UTC"],
+  ];
+
   return (
     <div>
       <PageHeader title="Teams & Territories" subtitle="Hierarchy, round-robin routing and quotas">
@@ -130,6 +154,29 @@ export default function Teams() {
         </div>
       </div>
       <div className="px-6 pb-6">
+        {digest && (
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="digest-settings">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><Clock className="h-4 w-4 text-primary" /> Daily Assignment Digest</h2>
+              <Btn variant="ghost" onClick={sendDigestNow} data-testid="digest-send-now"><Send className="h-4 w-4" /> Send now</Btn>
+            </div>
+            <p className="mb-4 text-sm text-slate-500">One summary email per rep of the leads assigned to them each day. {isAdmin ? "Pick when it goes out." : "Only admins can change the schedule."}</p>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" data-testid="digest-enabled" disabled={!isAdmin} checked={!!digest.enabled} onChange={(e) => setDigest({ ...digest, enabled: e.target.checked })} className="h-4 w-4 accent-primary" /> Enabled
+              </label>
+              <Field label="Hour (0–23)"><input data-testid="digest-hour" type="number" min={0} max={23} disabled={!isAdmin} value={digest.hour} onChange={(e) => setDigest({ ...digest, hour: e.target.value })} className={`${inputCls} w-24`} /></Field>
+              <Field label="Minute"><input data-testid="digest-minute" type="number" min={0} max={59} disabled={!isAdmin} value={digest.minute} onChange={(e) => setDigest({ ...digest, minute: e.target.value })} className={`${inputCls} w-24`} /></Field>
+              <Field label="Timezone">
+                <select data-testid="digest-tz" disabled={!isAdmin} value={digest.tz} onChange={(e) => setDigest({ ...digest, tz: e.target.value })} className={`${inputCls} w-52`}>
+                  {TZ_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </Field>
+              {isAdmin && <Btn onClick={saveDigest} data-testid="digest-save">Save schedule</Btn>}
+            </div>
+            <p className="mt-3 text-xs text-slate-400">Currently: {digest.enabled ? `sends at ${String(digest.hour).padStart(2, "0")}:${String(digest.minute).padStart(2, "0")} ${digest.tz}` : "disabled"}.</p>
+          </div>
+        )}
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-3 font-display font-bold text-slate-900">Quota Attainment (this month)</h2>
           <div className="overflow-x-auto">

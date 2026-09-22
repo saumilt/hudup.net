@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { TierPill, money, Btn, Field, inputCls, EmptyState, Modal } from "@/components/crm/kit";
-import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight, ChevronDown, Bookmark, Trash2 } from "lucide-react";
 
 const TIERS = ["", "GREEN", "YELLOW", "BLUE", "RED"];
 const COLORS = ["GREEN", "YELLOW", "BLUE", "RED"];
@@ -44,11 +44,17 @@ export default function Medicare() {
   const [connector, setConnector] = useState("AND");
   const [schema, setSchema] = useState([]);
   const [mode, setMode] = useState("simple");
+  const [savedViews, setSavedViews] = useState([]);
+
+  const loadSaved = useCallback(() => {
+    api.get("/crm/saved-searches", { params: { entity: "medicare" } }).then((r) => setSavedViews(r.data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get("/medicare/years").then((r) => setYears(r.data.years)).catch(() => {});
     api.get("/medicare/filter-schema").then((r) => setSchema(r.data.fields)).catch(() => {});
-  }, []);
+    loadSaved();
+  }, [loadSaved]);
 
   useEffect(() => {
     api.get("/medicare/states", { params: { dataset_year: form.dataset_year } }).then((r) => setStateOpts(r.data.states)).catch(() => {});
@@ -80,7 +86,8 @@ export default function Medicare() {
     }
   }, [form, mode, conds, connector]);
 
-  useEffect(() => { runSearch(1); /* eslint-disable-next-line */ }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { runSearch(1); }, []);
 
   const createLead = async (row) => {
     try {
@@ -103,10 +110,29 @@ export default function Medicare() {
   };
 
   const saveSearch = async () => {
-    const name = window.prompt("Name this search");
+    const name = window.prompt("Name this view (e.g. CA · Los Angeles · GREEN):");
     if (!name) return;
     await api.post("/crm/saved-searches", { name, entity: "medicare", query: mode === "advanced" ? { mode, connector, conditions: conds, dataset_year: form.dataset_year } : { mode, ...form } });
-    toast.success("Search saved");
+    toast.success("View saved"); loadSaved();
+  };
+  const applyView = async (view) => {
+    const qv = view.query || {};
+    if (qv.mode === "advanced") {
+      setMode("advanced"); setConnector(qv.connector || "AND"); setConds(qv.conditions || []);
+      setForm((f) => ({ ...f, dataset_year: qv.dataset_year || f.dataset_year, page: 1 }));
+      setLoading(true);
+      try { const r = await api.post("/medicare/advanced-search", { dataset_year: qv.dataset_year || form.dataset_year, connector: qv.connector || "AND", conditions: qv.conditions || [], sort: form.sort, page: 1, page_size: form.page_size }); setData(r.data); }
+      catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setLoading(false); }
+      return;
+    }
+    const next = { ...form, npi: qv.npi || "", last_name: qv.last_name || "", first_name: qv.first_name || "", specialty: qv.specialty || "", tier_rpm: qv.tier_rpm || "", states: qv.states || [], cities: qv.cities || [], tiers: qv.tiers || [], dataset_year: qv.dataset_year || form.dataset_year, page: 1 };
+    setMode("simple"); setForm(next); setLoading(true);
+    try { const r = await api.post("/medicare/search", { ...next, page: 1 }); setData(r.data); toast.success(`Loaded “${view.name}”`); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setLoading(false); }
+  };
+  const deleteView = async (sid) => {
+    try { await api.delete(`/crm/saved-searches/${sid}`); toast.success("View removed"); loadSaved(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
   const totalPages = Math.max(1, Math.ceil(data.total / form.page_size));
@@ -118,10 +144,27 @@ export default function Medicare() {
           {years.map((y) => <option key={y} value={y}>Year {y}</option>)}
         </select>
         <Btn variant="ghost" onClick={() => setMode(mode === "simple" ? "advanced" : "simple")} data-testid="ms-toggle-mode"><Filter className="h-4 w-4" /> {mode === "simple" ? "Advanced" : "Simple"}</Btn>
-        <Btn variant="ghost" onClick={saveSearch} data-testid="ms-save"><Save className="h-4 w-4" /> Save</Btn>
+        <Btn variant="ghost" onClick={saveSearch} data-testid="ms-save"><Save className="h-4 w-4" /> Save view</Btn>
       </PageHeader>
 
       <div className="p-6">
+        {/* Saved views */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 text-sm" data-testid="ms-saved-views">
+          <Bookmark className="h-4 w-4 text-slate-400" />
+          <span className="text-slate-500">Saved views</span>
+          <select data-testid="ms-view-select" value="" onChange={(e) => { const v = savedViews.find((s) => s.id === e.target.value); if (v) applyView(v); }} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+            <option value="">Load a saved view…</option>
+            {savedViews.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {savedViews.length === 0 && <span className="text-xs text-slate-400">Save your favourite state · city · 340B-colour set with “Save view”.</span>}
+          {savedViews.map((s) => (
+            <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+              <button type="button" onClick={() => applyView(s)} data-testid={`ms-view-chip-${s.id}`} className="hover:text-primary">{s.name}</button>
+              <button type="button" onClick={() => deleteView(s.id)} data-testid={`ms-view-del-${s.id}`} className="text-slate-400 hover:text-red-500"><Trash2 className="h-3 w-3" /></button>
+            </span>
+          ))}
+        </div>
+
         {/* search form */}
         {mode === "simple" ? (
           <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
