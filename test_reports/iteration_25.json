@@ -1,0 +1,47 @@
+{
+  "summary": "v2.28 web release verified end-to-end on backend + web UI. All 5 features + scope fix are working. Backend pytest 15/15 pass. Web UI verified across lead_manager (Fatema), super_admin (Sam), and account_manager roles. (1) Closer Queue: nav-closer-queue visible for LM/super_admin (hidden from AM); as LM, no 'Closer' column; as super_admin, 'Closer' column present. (2) Archive Bin: super_admin sees 1 archived lead in the bin, restore removes it (rows 1 -> 0). AM redirected off /crm/archive; nav-archive hidden. (3) Save Medicare View: as account_manager, ms-save prompt saves a view, chip persists across reload, ms-view-del removes it. (4) Territory Auto-Assign: backend returns 400 with no territory, 403 for non-admin, 200 with account_manager_name+team_name for admin+territory-linked team. (5) Daily Digest: admin edits hour/minute/tz and PUT persists (14:45 saved). Lead manager sees the card but all three inputs are disabled and the digest-save button is hidden; digest-send-now IS visible for lead_manager (backend requires MANAGER which allows lead_manager, matches spec). Scope fix confirmed: super_admin and admin see identical (full) counts for both leads and opportunities. Only outstanding item is the pre-existing cosmetic React hydration warning (<span> inside <option>) carried over from v2.27 — non-blocking.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Multiple (Leads/Medicare with saved-view <select>)", "issues": ["Carry-over from v2.27: React hydration console warning '<span> cannot be a child of <option>'. Non-functional; users see dropdown correctly. Ref: /app/frontend/src/pages/crm/Leads.js and/or Medicare.js saved-filter <select>."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration25_v228.py",
+    "/app/test_reports/pytest/pytest_iter25.xml"
+  ],
+  "action_items": [
+    "(Optional/cosmetic) Fix the pre-existing <span>-inside-<option> hydration warning in the saved-filter <select>.",
+    "Consider clarifying spec vs. implementation: 'Send now' (POST /crm/notifications/digest/run) is exposed to lead_manager, not admin-only. Review request describes non-admin as being able to 'view' but does not explicitly forbid triggering. If admin-only is desired, tighten the endpoint to require_admin.",
+    "Cleanup: Test suite creates 'ZZTEST v228 …' leads and 'ZZTEST_UI_…' saved searches. Tests archive/clean them, but a bulk-delete of anything with 'ZZTEST' in the name/org_name is safe if any linger."
+  ],
+  "critical_code_review_comments": [
+    "routes_digest.py:70 POST /digest/run is guarded by MANAGER (lead_manager+), not admin. If admins should be the only ones triggering the digest send-now, change to require_admin. Otherwise, the frontend hint 'admin-only save + send-now' overstates the current guard.",
+    "routes_teams.py:216 route_to_territory sets territory once via _apply_assignment but only writes an activity for the reassignment — no activity entry captures the prior territory change made by /assign in the same UI action. Consider consolidating the two calls into one endpoint so the timeline shows a single 'admin routed to territory X (team Y)' event.",
+    "CloserQueue.js:19 uses `limit: 500` but PageHeader shows total as leads.length — misleading if there are more than 500 with-closer leads. Consider surfacing total from a headers/count or paginate.",
+    "Medicare.js saveSearch() blocks on window.prompt (Sonner UX would be nicer, but non-blocking).",
+    "ArchiveBin.js loads both archived leads + archived opps with limit 500. For large orgs this will truncate silently — add a 'showing 500 most recent' hint or pagination.",
+    "routes_crm.py list_leads: has_closer overrides closer_id if both are passed (line 194 reassigns query['closer_id']). Low risk but the frontend never combines them; document or short-circuit.",
+    "routes_digest.py digest_worker runs asyncio.create_task on server start (server.py:262) with no shutdown hook — a graceful stop hook would prevent orphan sends during redeploys."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration25_v228.py",
+    "/app/test_reports/iteration_25.json"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100%"},
+  "test_credentials": "super_admin sam@healthandmore.net/8677, admin admin@boothiq.com/482913, lead_manager (Fatema) fatema@healthandmore.net/125148, account_manager accountmanager@boothiq.com/528174 (all from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Pytest module creates a single per-run 'ZZTEST v228 <uuid>' lead used across closer/archive/route-to-territory tests, then archives it at teardown. Saved-search test creates 'ZZTEST view <uuid>' and deletes it in-test. UI test creates 'ZZTEST_UI_<uuid>' saved medicare view and deletes it in-flow.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "v2.28 fully green on web + backend. Regression suite at /app/backend/tests/test_iteration25_v228.py covers: super_admin sees ALL leads/opps parity with admin; POST /crm/leads/{id}/closer set + clear; GET /crm/leads?has_closer=true and ?closer_id=<uid>; POST /crm/leads/{id}/archive + /opportunities/{id}/archive archive+restore + AM 403; /crm/saved-searches CRUD as account_manager; POST /crm/leads/{id}/route-to-territory 400/403/happy path; digest settings GET/PUT (admin-only) + LM GET/PUT-403 + invalid-tz fallback + POST /digest/run. Web flows: closer-queue role gating + Closer column, archive bin restore, digest settings save + LM disabled inputs, save-medicare-view create/reload/delete. Run pytest with -o addopts= to disable xdist inherited from pytest.ini.",
+  "rca of the issue": "N/A — no bugs found."
+}

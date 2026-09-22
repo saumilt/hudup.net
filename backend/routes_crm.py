@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from deps import db, require_roles, require_admin, get_current_user, get_thresholds
 from scoring import score_340b, score_rpm, tier_color_340b
 from crm_common import (
-    ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF,
+    ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF,
     LEAD_STATUSES, LEAD_SOURCES, PRIORITIES, DEFAULT_OPP_STAGES,
     now_iso, next_seq, activity, log_activity, log_event, DEFAULT_COMM,
 )
@@ -58,7 +58,7 @@ async def add_source(data: SourceInput, user=Depends(ANY_CRM)):
 def _lead_scope(user: dict) -> dict:
     role = user.get("role")
     # All managers AND account managers can view every lead (collaboration model).
-    if role in (ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER):
+    if role in (ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER):
         return {}
     return {"$or": [{"created_by": user["id"]}, {"account_manager_id": user["id"]}]}
 
@@ -648,7 +648,7 @@ async def upsert_contact(data: ContactInput, user=Depends(ANY_CRM)):
 # ==================== OPPORTUNITIES ====================
 def _opp_scope(user: dict) -> dict:
     role = user.get("role")
-    if role in (ROLE_ADMIN, ROLE_LEAD_MANAGER):
+    if role in (ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_LEAD_MANAGER):
         return {}
     return {"owner_id": user["id"]}
 
