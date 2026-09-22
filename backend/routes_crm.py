@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from deps import db, require_roles, get_current_user, get_thresholds
+from deps import db, require_roles, require_admin, get_current_user, get_thresholds
 from scoring import score_340b, score_rpm, tier_color_340b
 from crm_common import (
     ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF,
@@ -57,10 +57,9 @@ async def add_source(data: SourceInput, user=Depends(ANY_CRM)):
 
 def _lead_scope(user: dict) -> dict:
     role = user.get("role")
-    if role in (ROLE_ADMIN, ROLE_LEAD_MANAGER):
+    # All managers AND account managers can view every lead (collaboration model).
+    if role in (ROLE_ADMIN, ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER):
         return {}
-    if role == ROLE_ACCOUNT_MANAGER:
-        return {"account_manager_id": user["id"]}
     return {"$or": [{"created_by": user["id"]}, {"account_manager_id": user["id"]}]}
 
 
@@ -169,16 +168,20 @@ async def list_leads(
     account_manager_id: str | None = None, tag: str | None = None,
     match: str | None = None, q: str | None = None, mine: bool = False,
     state: str | None = None, tier: str | None = None, claim_mismatch: bool = False,
+    city: str | None = None, archived: bool = False,
     sort: str = "last_activity_at", limit: int = 200,
 ):
     user = await get_current_user(request)
     query = dict(_lead_scope(user))
+    query["archived"] = True if archived else {"$ne": True}
     if status:
         query["status"] = status
     if priority:
         query["priority"] = priority
     if source:
         query["source"] = source
+    if city:
+        query["city"] = {"$regex": city.strip(), "$options": "i"}
     if state:
         query["state"] = state.upper()
     if tier:
@@ -310,32 +313,94 @@ async def match_medicare(lead_id: str, data: LeadInput, user=Depends(ANY_CRM)):
 class AssignInput(BaseModel):
     lead_manager_id: str | None = None
     account_manager_id: str | None = None
+    collaborator_ids: list[str] | None = None
+    collaboration_mode: str | None = None  # "both" | "owner_only"
+    territory_id: str | None = None
+
+
+async def _user_name(uid):
+    u = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1})
+    return u["name"] if u else uid
 
 
 @router.post("/leads/{lead_id}/assign")
 async def assign_lead(lead_id: str, data: AssignInput, user=Depends(MANAGER)):
-    patch = {k: v for k, v in data.dict().items() if v is not None}
-    if not patch:
-        return {"ok": True}
-    if data.account_manager_id:
+    lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "activity": 0})
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    patch, log = {}, []
+    if data.account_manager_id is not None:
+        patch["account_manager_id"] = data.account_manager_id
+        patch["account_manager_name"] = await _user_name(data.account_manager_id) if data.account_manager_id else None
         patch["routing_reason"] = f"Manually assigned by {user.get('name')}"
         patch["routed_at"] = now_iso()
-    r = await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})
-    if r.matched_count == 0:
-        raise HTTPException(404, "Lead not found")
-    names = []
-    for k, v in patch.items():
-        u = await db.users.find_one({"id": v}, {"_id": 0, "name": 1})
-        names.append(f"{'Account Manager' if 'account' in k else 'Lead Manager'}: {u['name'] if u else v}")
-    await log_activity(lead_id, activity("assigned", user, "Assigned — " + ", ".join(names)))
+        log.append(f"Owner: {patch['account_manager_name'] or 'Unassigned'}")
+    if data.lead_manager_id is not None:
+        patch["lead_manager_id"] = data.lead_manager_id
+        log.append(f"Lead Manager: {await _user_name(data.lead_manager_id) if data.lead_manager_id else 'Unassigned'}")
+    if data.collaborator_ids is not None:
+        patch["collaborator_ids"] = data.collaborator_ids
+        patch["collaborator_names"] = [await _user_name(c) for c in data.collaborator_ids]
+        log.append(f"Collaborators: {', '.join(patch['collaborator_names']) or 'none'}")
+    if data.collaboration_mode is not None:
+        patch["collaboration_mode"] = data.collaboration_mode
+        log.append(f"Mode: {'Both work it' if data.collaboration_mode == 'both' else 'Owner only'}")
+    if data.territory_id is not None:
+        terr = await db.territories.find_one({"id": data.territory_id}, {"_id": 0, "name": 1})
+        patch["territory_id"] = data.territory_id
+        patch["territory_name"] = terr["name"] if terr else None
+        log.append(f"Territory: {patch['territory_name'] or 'cleared'}")
+    if not patch:
+        return {"ok": True}
+    await db.crm_leads.update_one({"id": lead_id}, {"$set": patch})
+    await log_activity(lead_id, activity("assigned", user, "Assigned — " + "; ".join(log)))
     if data.account_manager_id:
         try:
             from routes_push import notify_lead_assigned
-            lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "activity": 0})
-            await notify_lead_assigned(data.account_manager_id, lead or {"id": lead_id})
+            fresh = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "activity": 0})
+            await notify_lead_assigned(data.account_manager_id, fresh or {"id": lead_id})
         except Exception:
             pass
     return {"ok": True}
+
+
+class CloserInput(BaseModel):
+    closer_id: str | None = None  # a lead manager added to help close; None clears it
+
+
+@router.post("/leads/{lead_id}/closer")
+async def set_closer(lead_id: str, data: CloserInput, user=Depends(ANY_CRM)):
+    """Any account manager can add/remove a Lead Manager as the Closer (owner unchanged)."""
+    lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0, "activity": 0})
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    name = await _user_name(data.closer_id) if data.closer_id else None
+    await db.crm_leads.update_one({"id": lead_id}, {"$set": {
+        "closer_id": data.closer_id, "closer_name": name}})
+    await log_activity(lead_id, activity("assigned", user,
+                       f"Closer set to {name}" if data.closer_id else "Closer removed"))
+    if data.closer_id:
+        try:
+            from routes_push import notify_lead_assigned
+            await notify_lead_assigned(data.closer_id, {**lead, "id": lead_id})
+        except Exception:
+            pass
+    return {"ok": True, "closer_name": name}
+
+
+@router.post("/leads/{lead_id}/archive")
+async def archive_lead(lead_id: str, request: Request):
+    """Admin-only: archive/unarchive a lead."""
+    user = await require_admin(request)
+    body = await request.json()
+    archived = bool(body.get("archived", True))
+    r = await db.crm_leads.update_one({"id": lead_id}, {"$set": {"archived": archived}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Lead not found")
+    await log_activity(lead_id, activity("updated", user,
+                       "Lead archived" if archived else "Lead unarchived",
+                       {"changes": [{"field": "archived", "from": not archived, "to": archived}]}))
+    return {"ok": True, "archived": archived}
 
 
 class BulkAssignInput(BaseModel):
@@ -585,9 +650,10 @@ def _opp_scope(user: dict) -> dict:
 
 @router.get("/opportunities")
 async def list_opps(request: Request, stage: str | None = None, status: str | None = None,
-                    owner_id: str | None = None, limit: int = 200):
+                    owner_id: str | None = None, archived: bool = False, limit: int = 200):
     user = await get_current_user(request)
     query = dict(_opp_scope(user))
+    query["archived"] = True if archived else {"$ne": True}
     if stage:
         query["stage"] = stage
     if status:
@@ -598,10 +664,23 @@ async def list_opps(request: Request, stage: str | None = None, status: str | No
 
 
 class OppPatch(BaseModel):
+    name: str | None = None
     stage: str | None = None
     value: float | None = None
     status: str | None = None
     close_date: str | None = None
+
+
+@router.post("/opportunities/{opp_id}/archive")
+async def archive_opp(opp_id: str, request: Request):
+    """Admin-only: archive/unarchive an opportunity."""
+    user = await require_admin(request)
+    body = await request.json()
+    archived = bool(body.get("archived", True))
+    r = await db.crm_opportunities.update_one({"id": opp_id}, {"$set": {"archived": archived}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Opportunity not found")
+    return {"ok": True, "archived": archived}
 
 
 @router.patch("/opportunities/{opp_id}")

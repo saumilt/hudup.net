@@ -95,6 +95,9 @@ class SimpleSearch(BaseModel):
     specialty: str | None = None
     tier_340b: str | None = None
     tier_rpm: str | None = None
+    states: list[str] = []
+    cities: list[str] = []
+    tiers: list[str] = []
     sort: str = "tot_cost"
     page: int = 1
     page_size: int = 25
@@ -120,13 +123,19 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
             q["last_upper"] = {"$regex": "^" + re.escape(parts[-1])}
         elif parts:
             q["last_upper"] = {"$regex": "^" + re.escape(parts[0])}
-    if data.city:
+    if data.cities:
+        q["city"] = {"$in": data.cities}
+    elif data.city:
         q["city"] = {"$regex": re.escape(data.city.strip()), "$options": "i"}
-    if data.state:
+    if data.states:
+        q["state"] = {"$in": [s.strip().upper() for s in data.states if s.strip()]}
+    elif data.state:
         q["state"] = data.state.strip().upper()
     if data.specialty:
         q["specialty"] = {"$regex": re.escape(data.specialty.strip()), "$options": "i"}
-    if data.tier_340b:
+    if data.tiers:
+        q["tier_340b"] = {"$in": data.tiers}
+    elif data.tier_340b:
         q["tier_340b"] = data.tier_340b
     if data.tier_rpm:
         q["tier_rpm"] = data.tier_rpm
@@ -148,6 +157,25 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
     for r in results:
         r["crm"] = existing.get(r["npi"])
     return {"total": total, "results": results, "page": data.page, "page_size": data.page_size}
+
+
+@router.get("/states")
+async def med_states(dataset_year: int = 2024, user=Depends(CRM_VIEW)):
+    sids = await _session_ids_for_year(dataset_year)
+    q = {"session_id": {"$in": sids}} if sids else {}
+    states = await db.physicians.distinct("state", q)
+    return {"states": sorted([s for s in states if s])}
+
+
+@router.get("/cities")
+async def med_cities(states: str = "", dataset_year: int = 2024, user=Depends(CRM_VIEW)):
+    sids = await _session_ids_for_year(dataset_year)
+    q: dict = {"session_id": {"$in": sids}} if sids else {}
+    picked = [s.strip().upper() for s in states.split(",") if s.strip()]
+    if picked:
+        q["state"] = {"$in": picked}
+    cities = await db.physicians.distinct("city", q)
+    return {"cities": sorted([c for c in cities if c])[:3000]}
 
 
 class Condition(BaseModel):

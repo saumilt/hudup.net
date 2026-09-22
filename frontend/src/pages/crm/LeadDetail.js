@@ -13,6 +13,7 @@ export default function LeadDetail() {
   const nav = useNavigate();
   const { user } = useAuth();
   const isManager = ["admin", "super_admin", "lead_manager"].includes(user?.role);
+  const isAdmin = ["admin", "super_admin"].includes(user?.role);
   const [lead, setLead] = useState(null);
   const [meta, setMeta] = useState({ statuses: [], opp_stages: [] });
   const [ams, setAms] = useState([]);
@@ -31,6 +32,7 @@ export default function LeadDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [edit, setEdit] = useState({});
   const [histFilter, setHistFilter] = useState("all");
+  const [terrs, setTerrs] = useState([]);
 
   const runAiEnrich = async () => {
     setAi((s) => ({ ...s, busy: true, result: null }));
@@ -64,6 +66,7 @@ export default function LeadDetail() {
     load();
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
     api.get("/users", { params: { roles: "account_manager,lead_manager,admin,super_admin" } }).then((r) => setAms(r.data)).catch(() => {});
+    api.get("/crm/territories").then((r) => setTerrs(r.data)).catch(() => {});
   }, [id, load]);
 
   if (!lead) return <div className="p-10 text-slate-400">Loading…</div>;
@@ -86,7 +89,24 @@ export default function LeadDetail() {
   };
   const assign = async (field, val) => {
     await api.post(`/crm/leads/${id}/assign`, { [field]: val });
-    toast.success("Assigned"); load();
+    toast.success("Updated"); load();
+  };
+  const setCloser = async (val) => {
+    await api.post(`/crm/leads/${id}/closer`, { closer_id: val || null });
+    toast.success(val ? "Closer set" : "Closer removed"); load();
+  };
+  const toggleCollaborator = async (uid) => {
+    const cur = lead.collaborator_ids || [];
+    const next = cur.includes(uid) ? cur.filter((x) => x !== uid) : [...cur, uid];
+    await api.post(`/crm/leads/${id}/assign`, { collaborator_ids: next });
+    toast.success("Collaborators updated"); load();
+  };
+  const setMode = async (val) => { await assign("collaboration_mode", val); };
+  const setTerritory = async (val) => { await assign("territory_id", val); };
+  const archiveLead = async () => {
+    if (!window.confirm(lead.archived ? "Unarchive this lead?" : "Archive this lead? It will be hidden from the leads list.")) return;
+    try { await api.post(`/crm/leads/${id}/archive`, { archived: !lead.archived }); toast.success(lead.archived ? "Unarchived" : "Archived"); load(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const openEdit = () => {
     setEdit({
@@ -238,6 +258,7 @@ export default function LeadDetail() {
               {meta.statuses.map((s) => <option key={s}>{s}</option>)}
             </select>
             <Btn variant="ghost" data-testid="ld-edit" onClick={openEdit}><Pencil className="h-4 w-4" /> Edit</Btn>
+            {isAdmin && <Btn variant="ghost" data-testid="ld-archive" onClick={archiveLead}>{lead.archived ? "Unarchive" : "Archive"}</Btn>}
             {!lead.opportunity_id && <Btn onClick={() => setShowConvert(true)} data-testid="ld-convert"><Target className="h-4 w-4" /> Convert</Btn>}
             {lead.opportunity_id && <Btn variant="ghost" onClick={() => nav("/crm/opportunities")}><Link2 className="h-4 w-4" /> View opportunity</Btn>}
           </div>
@@ -330,6 +351,41 @@ export default function LeadDetail() {
                 {ams.map((a) => <option key={a.id} value={a.id}>{a.name}{a.role && a.role !== "account_manager" ? ` (${a.role.replace("_", " ")})` : ""}</option>)}
               </select>
             </Field>
+            <Field label="Closer (Lead Manager)">
+              <select data-testid="ld-closer" value={lead.closer_id || ""} onChange={(e) => setCloser(e.target.value)} className={inputCls}>
+                <option value="">No closer</option>
+                {ams.filter((a) => a.role === "lead_manager").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </Field>
+            {isManager && (
+              <Field label="Collaborators (also work this lead)">
+                <div data-testid="ld-collaborators" className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                  {ams.filter((a) => a.role === "account_manager" && a.id !== lead.account_manager_id).map((a) => (
+                    <label key={a.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" data-testid={`ld-collab-${a.id}`} checked={(lead.collaborator_ids || []).includes(a.id)} onChange={() => toggleCollaborator(a.id)} className="h-4 w-4 accent-primary" />
+                      {a.name}
+                    </label>
+                  ))}
+                </div>
+                {(lead.collaborator_ids || []).length > 0 && (
+                  <div className="mt-2 flex items-center gap-2 text-sm">
+                    <span className="text-xs uppercase text-slate-400">Mode</span>
+                    <select data-testid="ld-collab-mode" value={lead.collaboration_mode || "both"} onChange={(e) => setMode(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm">
+                      <option value="both">Both work it</option>
+                      <option value="owner_only">Owner only</option>
+                    </select>
+                  </div>
+                )}
+              </Field>
+            )}
+            {isManager && (
+              <Field label="Territory">
+                <select data-testid="ld-territory" value={lead.territory_id || ""} onChange={(e) => setTerritory(e.target.value)} className={inputCls}>
+                  <option value="">No territory</option>
+                  {terrs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </Field>
+            )}
             <div className="grid grid-cols-2 gap-2 text-sm text-slate-500">
               <div><p className="text-xs uppercase text-slate-400">Source</p>{lead.source}</div>
               {lead.collected_year ? <div data-testid="ld-collected-year"><p className="text-xs uppercase text-slate-400">Data year</p>{lead.collected_year}</div> : null}

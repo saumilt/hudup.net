@@ -3,13 +3,39 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { TierPill, money, Btn, Field, inputCls, EmptyState, Modal } from "@/components/crm/kit";
-import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 
 const TIERS = ["", "GREEN", "YELLOW", "BLUE", "RED"];
+const COLORS = ["GREEN", "YELLOW", "BLUE", "RED"];
+
+function MultiSelect({ label, options, selected, onChange, testid, disabled }) {
+  return (
+    <details className="group relative" data-testid={testid}>
+      <summary className={`${inputCls} flex cursor-pointer list-none items-center justify-between ${disabled ? "opacity-50" : ""}`}>
+        <span className="truncate">{selected.length ? `${selected.length} selected` : `Any ${label}`}</span>
+        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400" />
+      </summary>
+      {!disabled && (
+        <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+          {options.length === 0 && <p className="p-1 text-xs text-slate-400">No options</p>}
+          {selected.length > 0 && <button type="button" onClick={() => onChange([])} className="mb-1 text-xs text-primary hover:underline">Clear all</button>}
+          {options.map((o) => (
+            <label key={o} className="flex items-center gap-2 py-0.5 text-sm">
+              <input type="checkbox" data-testid={`${testid}-opt-${o}`} checked={selected.includes(o)} onChange={(e) => onChange(e.target.checked ? [...selected, o] : selected.filter((x) => x !== o))} className="h-4 w-4 accent-primary" />
+              {o}
+            </label>
+          ))}
+        </div>
+      )}
+    </details>
+  );
+}
 
 export default function Medicare() {
   const [years, setYears] = useState([2024]);
-  const [form, setForm] = useState({ dataset_year: 2024, npi: "", last_name: "", first_name: "", city: "", state: "", specialty: "", tier_340b: "", tier_rpm: "", sort: "tot_cost", page: 1, page_size: 25 });
+  const [form, setForm] = useState({ dataset_year: 2024, npi: "", last_name: "", first_name: "", specialty: "", tier_rpm: "", states: [], cities: [], tiers: [], sort: "tot_cost", page: 1, page_size: 25 });
+  const [stateOpts, setStateOpts] = useState([]);
+  const [cityOpts, setCityOpts] = useState([]);
   const [data, setData] = useState({ results: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [sel, setSel] = useState({});
@@ -23,6 +49,18 @@ export default function Medicare() {
     api.get("/medicare/years").then((r) => setYears(r.data.years)).catch(() => {});
     api.get("/medicare/filter-schema").then((r) => setSchema(r.data.fields)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.get("/medicare/states", { params: { dataset_year: form.dataset_year } }).then((r) => setStateOpts(r.data.states)).catch(() => {});
+  }, [form.dataset_year]);
+
+  useEffect(() => {
+    if (form.states.length) {
+      api.get("/medicare/cities", { params: { states: form.states.join(","), dataset_year: form.dataset_year } }).then((r) => setCityOpts(r.data.cities)).catch(() => {});
+    } else {
+      setCityOpts([]);
+    }
+  }, [form.states, form.dataset_year]);
 
   const runSearch = useCallback(async (page = 1) => {
     setLoading(true);
@@ -87,10 +125,19 @@ export default function Medicare() {
         {/* search form */}
         {mode === "simple" ? (
           <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-4">
-            {[["last_name", "Last name"], ["first_name", "First name"], ["npi", "NPI"], ["city", "City"], ["state", "State"], ["specialty", "Specialty"]].map(([k, l]) => (
+            {[["last_name", "Last name"], ["first_name", "First name"], ["npi", "NPI"], ["specialty", "Specialty"]].map(([k, l]) => (
               <Field key={k} label={l}><input data-testid={`ms-${k}`} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} className={inputCls} /></Field>
             ))}
-            <Field label="340B tier"><select data-testid="ms-t340" value={form.tier_340b} onChange={(e) => setForm({ ...form, tier_340b: e.target.value })} className={inputCls}>{TIERS.map((t) => <option key={t} value={t}>{t || "Any"}</option>)}</select></Field>
+            <Field label="State"><MultiSelect testid="ms-states" label="state" options={stateOpts} selected={form.states} onChange={(v) => setForm({ ...form, states: v, cities: [] })} /></Field>
+            <Field label="City"><MultiSelect testid="ms-cities" label="city" options={cityOpts} selected={form.cities} onChange={(v) => setForm({ ...form, cities: v })} disabled={!form.states.length} /></Field>
+            <Field label="340B color(s)">
+              <div data-testid="ms-tiers" className="flex flex-wrap gap-1 pt-1">
+                {COLORS.map((c) => {
+                  const on = form.tiers.includes(c);
+                  return <button key={c} type="button" data-testid={`ms-tier-${c}`} onClick={() => setForm({ ...form, tiers: on ? form.tiers.filter((x) => x !== c) : [...form.tiers, c] })} className={`rounded-full px-3 py-1.5 text-xs font-bold ${on ? "bg-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{c}</button>;
+                })}
+              </div>
+            </Field>
             <Field label="RPM tier"><select data-testid="ms-trpm" value={form.tier_rpm} onChange={(e) => setForm({ ...form, tier_rpm: e.target.value })} className={inputCls}>{TIERS.map((t) => <option key={t} value={t}>{t || "Any"}</option>)}</select></Field>
             <div className="col-span-2 flex items-end md:col-span-4"><Btn onClick={() => runSearch(1)} data-testid="ms-search"><Search className="h-4 w-4" /> Search</Btn></div>
           </div>

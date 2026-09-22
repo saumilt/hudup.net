@@ -1,0 +1,44 @@
+{
+  "summary": "v2.27 (See All Leads, Closer on Lead, Medicare multi-filter, Admin Archive) verified end-to-end on backend + web. Backend pytest 17/17 pass. Web UI verified for both account_manager and admin roles: AM sees 200 leads (all), city+assigned filters render; Medicare State multi-select opens (61 opts), City cascades (943 cities for CA), 340B color chips toggle, multi-state+multi-tier search returned 1,140,155 matches; LeadDetail exposes Closer dropdown for AM and correctly hides Archive/Collaborators/Territory. Admin sees Closer + Collaborators + Territory + Archive on LeadDetail, and 'Show archived' toggle + 4 per-card Edit/Archive buttons on Opportunities with Edit modal opening. Backend also enforces AM-cannot-archive-lead (403), AM-cannot-manager-assign (403), archived defaults exclude, opp PATCH persists name/value/stage/close_date. One minor React hydration console warning in the saved-filter <select> (a <span> inside <option>) — non-blocking.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Leads (isManager view)", "issues": ["React hydration warning: <span> cannot be a child of <option> in the saved-filter <select>. Reference: /app/frontend/src/pages/crm/Leads.js — the <option> element rendered inside the saved-filter <select> contains a <span> (likely via a component/icon). Purely cosmetic in the console; users see the dropdown correctly."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration24_v227.py",
+    "/app/test_reports/pytest/pytest_iter24.xml"
+  ],
+  "action_items": [
+    "(Optional/cosmetic) Fix the <span>-inside-<option> in the saved-filter <select> on Leads.js to silence a React hydration console warning. Not functional.",
+    "Cleanup: I created a few TEST_ leads/opps ('TEST_v227 Closer Lead', 'TEST_v227 Archive Lead', 'TEST_v227 Opp Src', 'TEST_v227 Opp Renamed'). Test suite unarchives them at the end, but they still exist in the DB — main agent can bulk-delete anything with 'TEST_v227' in name/org_name."
+  ],
+  "critical_code_review_comments": [
+    "routes_crm.py:392 archive_lead uses request.json() manually + require_admin(request) — fine, but inconsistent with other endpoints that use Pydantic Body + Depends. Consider extracting an ArchiveInput BaseModel for uniformity.",
+    "routes_crm.py list_opps only guards owner_id for non-managers; there's no scoping on collaborator visibility. If v2.28 wants collaborators to see opps they help on, add {'$or': [owner_id, collaborator_ids]} scope.",
+    "routes_medicare.py:171 med_cities returns top 3000 cities but doesn't paginate — for multi-state queries (e.g. CA+TX+NY) the 3000 cap is silently applied. Consider surfacing a 'truncated' flag or offering server-side search.",
+    "LeadDetail.js is 682 lines — still large. Extract Ownership panel (closer/collab/mode/territory) and Notes/Meetings into separate components.",
+    "Assign endpoint (routes_crm.py:326) sets collaborator_names by looking up user names one-by-one via _user_name in a loop — n+1 DB round trips. Batch via a single find({id: {$in: ids}}).",
+    "closer_name and territory_name are cached on the lead doc — if a user or territory is renamed later, the lead will show a stale name. Consider recomputing on read or updating downstream."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration24_v227.py"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100%"},
+  "test_credentials": "admin@boothiq.com/482913, accountmanager@boothiq.com/528174, leadmanager@boothiq.com/639201 (all from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created via pytest: 'TEST_v227 Closer Lead' (assigned collaborator + mode=both + territory), 'TEST_v227 Archive Lead' (archived then unarchived by admin), 'TEST_v227 Opp Src' + 'TEST_v227 Opp Renamed' (opp archived then unarchived + patched to stage=Proposal). All test-data prefixed with TEST_v227 for easy cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "v2.27 is fully green. Backend regression at /app/backend/tests/test_iteration24_v227.py covers: P1 (AM sees all + city/assigned/archived filters), P2 (AM sets/clears closer, AM 403 on manager-assign, LM sets collaborators/mode/territory, notes still work), P3 (medicare states, cities cascade, multi-state+multi-tier search, legacy singular fallback), Admin Archive (AM 403 on lead + opp archive, admin archive excludes from default list, PATCH opp name/value/stage/close_date persists). Web-side flows verified live for AM + Admin. The only outstanding item is a cosmetic React hydration warning from a <span> inside an <option> in the Leads saved-filter <select>.",
+  "rca of the issue": "N/A — all requested v2.27 flows are working."
+}
