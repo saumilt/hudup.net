@@ -56,6 +56,31 @@ export default function LeadDetail() {
       load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const runAiResearch = async () => {
+    setAi((s) => ({ ...s, busy: true, result: null }));
+    try {
+      const start = await api.post(`/crm/leads/${id}/ai-enrich/research`);
+      const jobId = start.data.job_id;
+      const poll = async (tries) => {
+        try {
+          const r = await api.get(`/crm/leads/${id}/ai-enrich/jobs/${jobId}`);
+          const st = r.data.status;
+          if (st === "running") {
+            if (tries <= 0) { setAi((s) => ({ ...s, busy: false })); toast.error("AI research is taking too long — please try again"); return; }
+            setTimeout(() => poll(tries - 1), 3000);
+            return;
+          }
+          if (st === "error") { setAi((s) => ({ ...s, busy: false })); toast.error(r.data.error || "AI research failed"); return; }
+          const found = r.data.found || {};
+          setAi((s) => ({ ...s, busy: false, result: r.data, pick: Object.keys(found) }));
+        } catch (e) { setAi((s) => ({ ...s, busy: false })); toast.error(formatApiError(e.response?.data?.detail) || "AI research failed"); }
+      };
+      poll(40);
+    } catch (e) {
+      setAi((s) => ({ ...s, busy: false }));
+      toast.error(formatApiError(e.response?.data?.detail) || "AI research failed");
+    }
+  };
 
 
   const load = useCallback(async () => {
@@ -506,17 +531,22 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      <Modal open={ai.open} onClose={() => setAi({ ...ai, open: false })} title="AI Enrich — from research or PDF" wide>
+      <Modal open={ai.open} onClose={() => setAi({ ...ai, open: false })} title="AI Enrich — web research or PDF" wide>
         {!ai.result ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">Paste research (e.g. from ChatGPT) and/or upload a PDF profile. AI extracts contact & practice details; everything else is saved as an <b>AI update</b> note. It only uses what's in the material — it won't invent data.</p>
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="mb-2 text-sm text-slate-600">Let <b>AI search the web</b> for this practice &amp; physician using what's already on the record — no paste needed. Findings are shown for review before anything is saved.</p>
+              <Btn onClick={runAiResearch} data-testid="ai-research-run" disabled={ai.busy} className="w-full justify-center"><Sparkles className="h-4 w-4" /> {ai.busy ? "Researching the web…" : "Research the web with AI"}</Btn>
+            </div>
+            <div className="flex items-center gap-3 py-1 text-xs font-semibold uppercase text-slate-400"><span className="h-px flex-1 bg-slate-200" /> or paste / upload <span className="h-px flex-1 bg-slate-200" /></div>
+            <p className="text-sm text-slate-500">Paste research (e.g. from ChatGPT) and/or upload a PDF profile. AI extracts contact &amp; practice details; everything else is saved as an <b>AI update</b> note. This mode only uses what's in the material — it won't invent data.</p>
             <Field label="Research text (optional)">
               <textarea data-testid="ai-enrich-text" value={ai.text} onChange={(e) => setAi({ ...ai, text: e.target.value })} rows={6} className={inputCls} placeholder="Paste the physician's profile / research here…" />
             </Field>
             <Field label="Or upload a PDF / text file">
               <input data-testid="ai-enrich-file" type="file" accept=".pdf,.txt,.md" onChange={(e) => setAi({ ...ai, file: e.target.files?.[0] || null })} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold" />
             </Field>
-            <Btn onClick={runAiEnrich} data-testid="ai-enrich-run" disabled={ai.busy || (!ai.text && !ai.file)} className="w-full justify-center">{ai.busy ? "Analyzing…" : "Run AI Enrich"}</Btn>
+            <Btn onClick={runAiEnrich} data-testid="ai-enrich-run" disabled={ai.busy || (!ai.text && !ai.file)} variant="ghost" className="w-full justify-center">{ai.busy ? "Analyzing…" : "Extract from pasted text / PDF"}</Btn>
           </div>
         ) : (
           <div className="space-y-3">

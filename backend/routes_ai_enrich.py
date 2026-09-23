@@ -1,5 +1,6 @@
 """AI enrichment endpoints: extract contact/practice info from an uploaded PDF or
 pasted research text, review, then apply (rest is saved as an 'AI update' note)."""
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -7,7 +8,7 @@ from pydantic import BaseModel
 
 from deps import db, require_roles
 from crm_common import now_iso, log_event, provenance
-from ai_enrich import ai_enrich, extract_pdf_text, fetch_bytes, CONTACT_FIELDS
+from ai_enrich import ai_enrich, ai_research, extract_pdf_text, fetch_bytes, CONTACT_FIELDS
 
 router = APIRouter(prefix="/api/crm")
 ANY_CRM = require_roles("lead_manager", "account_manager", "staff")
@@ -62,6 +63,48 @@ async def ai_enrich_lead(lead_id: str, file: UploadFile | None = File(None),
             "notes": result["notes"], "source_chars": len(doc)}
 
 
+async def _run_research_job(job_id: str, lead: dict):
+    try:
+        result = await ai_research(lead)
+        found = {k: v for k, v in result["contact"].items() if v}
+        await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {
+            "status": "preview", "contact": result["contact"], "summary": result["summary"],
+            "notes": result["notes"], "found": found, "finished_at": now_iso()}})
+    except Exception as e:  # noqa: BLE001
+        await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {
+            "status": "error", "error": str(e)[:300], "finished_at": now_iso()}})
+
+
+@router.post("/leads/{lead_id}/ai-enrich/research")
+async def ai_research_lead(lead_id: str, user=Depends(ANY_CRM)):
+    """Kick off live web research (ChatGPT/OpenAI + web search) in the BACKGROUND using
+    what's on the record — no PDF/paste needed. Poll the returned job_id for the result
+    (web search is slow, so this avoids the ingress proxy timing out)."""
+    lead = await _get_lead(lead_id)
+    if not (lead.get("org_name") or lead.get("contact_last") or lead.get("contact_first")
+            or lead.get("matched_npi") or lead.get("npi")):
+        raise HTTPException(400, "Add a practice name, contact name, or NPI first so AI has something to research")
+    job_id = str(uuid.uuid4())
+    await db.enrichment_jobs.insert_one({
+        "id": job_id, "lead_id": lead_id, "kind": "ai", "status": "running",
+        "source_label": "AI (web research)", "contact": {}, "summary": "", "notes": [],
+        "found": {}, "created_by": user["id"], "created_at": now_iso()})
+    asyncio.create_task(_run_research_job(job_id, lead))
+    return {"job_id": job_id, "status": "running"}
+
+
+@router.get("/leads/{lead_id}/ai-enrich/jobs/{job_id}")
+async def get_ai_enrich_job(lead_id: str, job_id: str, user=Depends(ANY_CRM)):
+    """Poll a background enrichment job: status is running | preview | error."""
+    job = await db.enrichment_jobs.find_one({"id": job_id, "lead_id": lead_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return {"job_id": job_id, "status": job.get("status"),
+            "found": job.get("found") or {k: v for k, v in (job.get("contact") or {}).items() if v},
+            "summary": job.get("summary") or "", "notes": job.get("notes") or [],
+            "error": job.get("error")}
+
+
 class AcceptAIInput(BaseModel):
     job_id: str
     fields: list[str] = []      # contact keys to apply
@@ -76,13 +119,14 @@ async def accept_ai_enrich(lead_id: str, data: AcceptAIInput, user=Depends(ANY_C
         raise HTTPException(404, "AI enrichment job not found")
     contact = job.get("contact") or {}
     enr = dict(lead.get("enrichment") or {})
+    src_label = job.get("source_label") or "AI (document)"
     top_patch = {}
     applied = []
     for f in data.fields:
         val = contact.get(f)
         if not val or f not in CONTACT_FIELDS:
             continue
-        enr[f] = provenance(val, "AI (document)", "MEDIUM")
+        enr[f] = provenance(val, src_label, "MEDIUM")
         enr[f]["accepted_by"] = user.get("name")
         top = _TOP.get(f)
         if top and not lead.get(top):

@@ -23,6 +23,20 @@ async def generate(system: str, prompt: str, want_json: bool = False,
     return resp if isinstance(resp, str) else str(resp)
 
 
+async def generate_web_research(system: str, prompt: str,
+                                model: str = "claude-sonnet-4-6") -> str:
+    """One-shot generation WITH live web search via the Emergent key. Uses Claude's
+    server-side web_search tool (OpenAI web search isn't available on the universal key).
+    Used for researching a practice/physician from public sources."""
+    if not _key():
+        raise RuntimeError("AI key not configured")
+    chat = (LlmChat(api_key=_key(), session_id=str(uuid.uuid4()), system_message=system)
+            .with_model("anthropic", model)
+            .with_tools([{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}]))
+    resp = await chat.send_message(UserMessage(text=prompt))
+    return resp if isinstance(resp, str) else str(resp)
+
+
 def parse_json(text: str):
     """Best-effort JSON extraction from an LLM response."""
     t = (text or "").strip()
