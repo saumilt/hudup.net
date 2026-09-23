@@ -79,8 +79,9 @@ Rules: Use ONLY information found in the SOURCE MATERIAL or CRM CONTEXT. Do NOT 
 
 
 async def ai_research(lead: dict) -> dict:
-    """Actively research the practice + physician on the web (OpenAI web search) using
-    what's already on the record, then return the same {contact, summary, notes} shape."""
+    """Actively research the practice + physician on the web (live web search) using
+    what's already on the record. Returns flat contact values plus per-field
+    {source, confidence} metadata, a summary, and factual notes."""
     ctx = lead_context(lead)
     prompt = f"""Research this medical practice and physician using web search, then report what you find.
 
@@ -89,16 +90,29 @@ CRM CONTEXT (what we already know):
 
 Search the web using the practice name, physician name, city/state, and NPI (if present).
 Return a JSON object with EXACTLY these keys:
-- "contact": an object with keys {CONTACT_FIELDS}. Use null for anything you cannot verify from a source. Prefer the practice's official website, a direct office phone, and a professional/work email. "practice_name" is the clinic/hospital/organization; "address" is the practice's street address.
-- "summary": a concise 2-4 sentence professional summary of the practice and physician for a sales rep (what they do, size/scope, notable facts).
-- "notes": an array of short factual bullet strings for every other useful detail found (services offered, hospital/health-system affiliations, group or network, education, board certifications, other locations, office hours, insurance accepted, leadership roles, etc.).
+- "contact": an object whose keys are any of {CONTACT_FIELDS}. For EACH field you can verify, the value MUST be an object of the form {{"value": <the value>, "source": "<the exact source URL you found it on>", "confidence": "HIGH" | "MEDIUM" | "LOW"}}. Omit or use null for any field you cannot verify from a real source. Prefer the practice's official website, a direct office phone, and a professional/work email. "practice_name" is the clinic/hospital/organization; "address" is the practice's street address. Use HIGH only when the source is the practice's own website or an authoritative registry (e.g. the NPI registry).
+- "summary": a concise 2-4 sentence professional summary of the practice and physician for a sales rep.
+- "notes": an array of short factual bullet strings for every other useful detail found (services offered, hospital/health-system affiliations, group or network, education, board certifications, other locations, hours, insurance accepted, leadership roles, etc.).
 - "sources": an array of the source URLs you actually used.
 
-Rules: Use ONLY information you find via web search or the CRM context. If you cannot confidently find this practice/physician, return null contact fields and say so in the summary. Return JSON only, no prose."""
+Rules: Use ONLY information you find via web search or the CRM context. EVERY contact field you return MUST include the source URL it came from. If you cannot confidently find this practice/physician, return an empty contact object and say so in the summary. Return JSON only, no prose."""
     raw = await generate_web_research(_RESEARCH_SYSTEM, prompt)
     data = parse_json(raw) or {}
-    contact = data.get("contact") or {}
-    contact = {k: (contact.get(k) or None) for k in CONTACT_FIELDS}
+    raw_contact = data.get("contact") or {}
+    contact, field_meta = {}, {}
+    for k in CONTACT_FIELDS:
+        cell = raw_contact.get(k)
+        val, source, conf = None, "", "MEDIUM"
+        if isinstance(cell, dict):
+            val = cell.get("value")
+            source = (cell.get("source") or "").strip()
+            conf = (cell.get("confidence") or "MEDIUM").upper()
+        elif cell:
+            val = cell
+        contact[k] = val or None
+        if val:
+            field_meta[k] = {"source": source,
+                             "confidence": conf if conf in ("HIGH", "MEDIUM", "LOW") else "MEDIUM"}
     notes = data.get("notes") or []
     if isinstance(notes, str):
         notes = [notes]
@@ -109,6 +123,7 @@ Rules: Use ONLY information you find via web search or the CRM context. If you c
     src_notes = [f"Source: {str(s).strip()}" for s in sources if str(s).strip()]
     return {
         "contact": contact,
+        "field_meta": field_meta,
         "summary": (data.get("summary") or "").strip(),
         "notes": notes + src_notes,
     }

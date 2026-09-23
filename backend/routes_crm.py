@@ -158,6 +158,15 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
                 doc["account_manager_id"] = am_id
         except Exception:
             pass
+    # Optionally kick off AI web research in the background (admin-enabled), queued for review.
+    if doc.get("org_name") or doc.get("contact_last") or doc.get("contact_first") or matched_npi:
+        try:
+            s = await db.app_settings.find_one({"_id": "auto_research"}) or {}
+            if s.get("enabled"):
+                from routes_ai_enrich import start_research_job
+                await start_research_job(lead_id, doc, user, auto=True)
+        except Exception:
+            pass
     return doc
 
 

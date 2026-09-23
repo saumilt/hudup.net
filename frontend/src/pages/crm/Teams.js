@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2, Clock, Send, Eye } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2, Clock, Send, Eye, Sparkles } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -33,16 +33,19 @@ export default function Teams() {
   const [terrEditId, setTerrEditId] = useState(null);
   const [digest, setDigest] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [autoResearch, setAutoResearch] = useState(null);
 
   const load = useCallback(async () => {
-    const [a, t, tr, q, b, d] = await Promise.all([
+    const [a, t, tr, q, b, d, ar] = await Promise.all([
       api.get("/users?role=account_manager"), api.get("/crm/teams"),
       api.get("/crm/territories"), api.get("/crm/quotas/attainment"),
       api.get("/crm/routing/balance", { params: { scope } }),
       api.get("/crm/notifications/digest/settings").catch(() => ({ data: null })),
+      api.get("/crm/auto-research/settings").catch(() => ({ data: null })),
     ]);
     setAms(a.data); setTeams(t.data); setTerrs(tr.data); setAtt(q.data); setBal(b.data);
     if (d.data) setDigest(d.data);
+    if (ar.data) setAutoResearch(ar.data);
   }, [scope]);
   useEffect(() => { load(); }, [load]);
 
@@ -119,6 +122,10 @@ export default function Teams() {
     try { const r = await api.post("/crm/notifications/digest/run"); toast.success(`Digest sent to ${r.data.reps_notified} rep(s) · ${r.data.total_leads} lead(s)`); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const toggleAutoResearch = async (val) => {
+    try { const r = await api.put("/crm/auto-research/settings", { enabled: val }); setAutoResearch(r.data); toast.success(val ? "New leads will be auto-researched" : "Auto-research turned off"); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const TZ_OPTS = [
     ["America/New_York", "Eastern (New York)"], ["America/Chicago", "Central (Chicago)"],
     ["America/Denver", "Mountain (Denver)"], ["America/Los_Angeles", "Pacific (Los Angeles)"],
@@ -168,6 +175,20 @@ export default function Teams() {
         </div>
       </div>
       <div className="px-6 pb-6">
+        {autoResearch && (
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="auto-research-settings">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><Sparkles className="h-4 w-4 text-primary" /> Auto-Research New Leads</h2>
+                <p className="mt-1 text-sm text-slate-500">When on, every newly captured lead is researched on the web by AI in the background and flagged <b>“AI research ready to review”</b> on the lead. {isAdmin ? "Uses Universal Key credits per lead." : "Only admins can change this."}</p>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" data-testid="auto-research-toggle" disabled={!isAdmin} checked={!!autoResearch.enabled} onChange={(e) => toggleAutoResearch(e.target.checked)} className="h-4 w-4 accent-primary" />
+                {autoResearch.enabled ? "On" : "Off"}
+              </label>
+            </div>
+          </div>
+        )}
         {digest && (
           <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="digest-settings">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

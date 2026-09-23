@@ -3,15 +3,16 @@ pasted research text, review, then apply (rest is saved as an 'AI update' note).
 import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 
-from deps import db, require_roles
+from deps import db, require_roles, require_admin
 from crm_common import now_iso, log_event, provenance
 from ai_enrich import ai_enrich, ai_research, extract_pdf_text, fetch_bytes, CONTACT_FIELDS
 
 router = APIRouter(prefix="/api/crm")
 ANY_CRM = require_roles("lead_manager", "account_manager", "staff")
+AUTO_RESEARCH_KEY = "auto_research"
 
 # Contact fields mirrored onto the lead's top-level record when accepted.
 _TOP = {
@@ -63,33 +64,47 @@ async def ai_enrich_lead(lead_id: str, file: UploadFile | None = File(None),
             "notes": result["notes"], "source_chars": len(doc)}
 
 
-async def _run_research_job(job_id: str, lead: dict):
+async def _run_research_job(job_id: str, lead: dict, auto: bool = False):
     try:
         result = await ai_research(lead)
         found = {k: v for k, v in result["contact"].items() if v}
         await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {
-            "status": "preview", "contact": result["contact"], "summary": result["summary"],
+            "status": "preview", "contact": result["contact"],
+            "field_meta": result.get("field_meta") or {}, "summary": result["summary"],
             "notes": result["notes"], "found": found, "finished_at": now_iso()}})
+        if auto:
+            await db.crm_leads.update_one({"id": lead["id"]}, {"$set": {
+                "ai_research_ready": True, "ai_research_job_id": job_id}})
     except Exception as e:  # noqa: BLE001
         await db.enrichment_jobs.update_one({"id": job_id}, {"$set": {
             "status": "error", "error": str(e)[:300], "finished_at": now_iso()}})
 
 
+async def start_research_job(lead_id: str, lead: dict, user: dict, auto: bool = False) -> str:
+    """Create a running research job and kick off the background task. Returns job_id."""
+    job_id = str(uuid.uuid4())
+    await db.enrichment_jobs.insert_one({
+        "id": job_id, "lead_id": lead_id, "kind": "ai", "status": "running",
+        "source_label": "AI (web research)", "auto": auto, "contact": {}, "field_meta": {},
+        "summary": "", "notes": [], "found": {},
+        "created_by": user["id"], "created_at": now_iso()})
+    asyncio.create_task(_run_research_job(job_id, {**lead, "id": lead_id}, auto=auto))
+    return job_id
+
+
 @router.post("/leads/{lead_id}/ai-enrich/research")
 async def ai_research_lead(lead_id: str, user=Depends(ANY_CRM)):
-    """Kick off live web research (ChatGPT/OpenAI + web search) in the BACKGROUND using
-    what's on the record — no PDF/paste needed. Poll the returned job_id for the result
-    (web search is slow, so this avoids the ingress proxy timing out)."""
+    """Kick off live web research (Claude + web search) in the BACKGROUND using what's on
+    the record — no PDF/paste needed. Poll the returned job_id for the result (web search
+    is slow, so this avoids the ingress proxy timing out)."""
     lead = await _get_lead(lead_id)
     if not (lead.get("org_name") or lead.get("contact_last") or lead.get("contact_first")
             or lead.get("matched_npi") or lead.get("npi")):
         raise HTTPException(400, "Add a practice name, contact name, or NPI first so AI has something to research")
-    job_id = str(uuid.uuid4())
-    await db.enrichment_jobs.insert_one({
-        "id": job_id, "lead_id": lead_id, "kind": "ai", "status": "running",
-        "source_label": "AI (web research)", "contact": {}, "summary": "", "notes": [],
-        "found": {}, "created_by": user["id"], "created_at": now_iso()})
-    asyncio.create_task(_run_research_job(job_id, lead))
+    # A fresh manual run clears any pending auto-research flag.
+    await db.crm_leads.update_one({"id": lead_id},
+                                  {"$set": {"ai_research_ready": False, "ai_research_job_id": None}})
+    job_id = await start_research_job(lead_id, lead, user, auto=False)
     return {"job_id": job_id, "status": "running"}
 
 
@@ -101,8 +116,27 @@ async def get_ai_enrich_job(lead_id: str, job_id: str, user=Depends(ANY_CRM)):
         raise HTTPException(404, "Job not found")
     return {"job_id": job_id, "status": job.get("status"),
             "found": job.get("found") or {k: v for k, v in (job.get("contact") or {}).items() if v},
+            "field_meta": job.get("field_meta") or {},
             "summary": job.get("summary") or "", "notes": job.get("notes") or [],
             "error": job.get("error")}
+
+
+class AutoResearchInput(BaseModel):
+    enabled: bool = False
+
+
+@router.get("/auto-research/settings")
+async def get_auto_research(user=Depends(require_roles("lead_manager", "account_manager", "staff"))):
+    s = await db.app_settings.find_one({"_id": AUTO_RESEARCH_KEY}) or {}
+    return {"enabled": bool(s.get("enabled", False))}
+
+
+@router.put("/auto-research/settings")
+async def put_auto_research(data: AutoResearchInput, request: Request):
+    await require_admin(request)
+    await db.app_settings.update_one({"_id": AUTO_RESEARCH_KEY},
+                                     {"$set": {"enabled": bool(data.enabled)}}, upsert=True)
+    return {"enabled": bool(data.enabled)}
 
 
 class AcceptAIInput(BaseModel):
@@ -118,21 +152,28 @@ async def accept_ai_enrich(lead_id: str, data: AcceptAIInput, user=Depends(ANY_C
     if not job:
         raise HTTPException(404, "AI enrichment job not found")
     contact = job.get("contact") or {}
+    fmeta = job.get("field_meta") or {}
     enr = dict(lead.get("enrichment") or {})
-    src_label = job.get("source_label") or "AI (document)"
+    default_label = job.get("source_label") or "AI (document)"
     top_patch = {}
     applied = []
     for f in data.fields:
         val = contact.get(f)
         if not val or f not in CONTACT_FIELDS:
             continue
-        enr[f] = provenance(val, src_label, "MEDIUM")
+        meta = fmeta.get(f) or {}
+        src = (meta.get("source") or "").strip()
+        conf = meta.get("confidence") or "MEDIUM"
+        label = f"{default_label} — {src}" if src else default_label
+        enr[f] = provenance(val, label, conf)
         enr[f]["accepted_by"] = user.get("name")
+        if src:
+            enr[f]["source_url"] = src
         top = _TOP.get(f)
         if top and not lead.get(top):
             top_patch[top] = val
         applied.append(f)
-    set_doc = {"enrichment": enr, **top_patch}
+    set_doc = {"enrichment": enr, "ai_research_ready": False, "ai_research_job_id": None, **top_patch}
 
     note_added = False
     if data.save_note and (job.get("summary") or job.get("notes")):

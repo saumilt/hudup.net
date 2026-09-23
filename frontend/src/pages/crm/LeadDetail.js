@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import Softphone from "@/components/crm/Softphone";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
-  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, Building2, Bot, Shuffle, Pencil, AlertTriangle, FileText } from "lucide-react";
+  Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, RefreshCw, Bot, Shuffle, Pencil, AlertTriangle, FileText } from "lucide-react";
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -21,11 +21,10 @@ export default function LeadDetail() {
   const [npi, setNpi] = useState("");
   const [showConvert, setShowConvert] = useState(false);
   const [conv, setConv] = useState({ value: "", stage: "Discovery" });
-  const [modal, setModal] = useState(null); // email | call | text | enrich
+  const [modal, setModal] = useState(null); // email | call | text
   const [email, setEmail] = useState({ subject: "", html: "" });
   const [call, setCall] = useState({ disposition: "Connected", notes: "", follow_up_task: "" });
   const [text, setText] = useState("");
-  const [enrich, setEnrich] = useState({ loading: false, result: null, picked: {} });
   const [busy, setBusy] = useState(false);
   const [ai, setAi] = useState({ busy: false, prep: null, brief: null, open: false, text: "", file: null, result: null, pick: [] });
   const [agent, setAgent] = useState({ busy: false, plan: null, picked: {} });
@@ -192,39 +191,25 @@ export default function LeadDetail() {
       toast.success(r.data.note || "Message logged"); setModal(null); setText(""); load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
-  const runEnrich = async () => {
-    setModal("enrich"); setEnrich({ loading: true, result: null, picked: {} });
+  const openAiJob = async (jobId) => {
+    setAi((s) => ({ ...s, open: true, busy: true, result: null, pick: [] }));
     try {
-      const r = await api.post(`/crm/leads/${id}/enrich`);
-      const picked = {};
-      Object.entries(r.data.found || {}).forEach(([k, v]) => { if (v && !(Array.isArray(v) && !v.length)) picked[k] = true; });
-      setEnrich({ loading: false, result: r.data, picked });
-    } catch (e) { setEnrich({ loading: false, result: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
+      const r = await api.get(`/crm/leads/${id}/ai-enrich/jobs/${jobId}`);
+      if (r.data.status === "preview") {
+        const found = r.data.found || {};
+        setAi((s) => ({ ...s, busy: false, result: r.data, pick: Object.keys(found) }));
+      } else if (r.data.status === "running") {
+        setAi((s) => ({ ...s, busy: false }));
+        toast.message("AI research is still running — try again in a moment");
+      } else {
+        setAi((s) => ({ ...s, busy: false }));
+        toast.error(r.data.error || "AI research failed");
+      }
+    } catch (e) { setAi((s) => ({ ...s, busy: false })); toast.error(formatApiError(e.response?.data?.detail)); }
   };
-  const runCompanyEnrich = async () => {
-    setModal("company"); setEnrich({ loading: true, result: null, picked: {} });
-    try {
-      const r = await api.post(`/crm/leads/${id}/enrich-company`);
-      const picked = {};
-      Object.entries(r.data.found || {}).forEach(([k, v]) => { if (v) picked[k] = true; });
-      setEnrich({ loading: false, result: r.data, picked });
-    } catch (e) { setEnrich({ loading: false, result: { error: formatApiError(e.response?.data?.detail) }, picked: {} }); }
-  };
-  const acceptCompany = async () => {
-    const fields = Object.keys(enrich.picked).filter((k) => enrich.picked[k]);
-    if (!fields.length) return toast.error("Select at least one field");
-    try {
-      await api.post(`/crm/leads/${id}/enrich-company/accept`, { job_id: enrich.result.job_id, fields });
-      toast.success("Practice data saved"); setModal(null); load();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
-  };
-  const acceptEnrich = async () => {
-    const fields = Object.keys(enrich.picked).filter((k) => enrich.picked[k]);
-    if (!fields.length) return toast.error("Select at least one field");
-    try {
-      await api.post(`/crm/leads/${id}/enrich/accept`, { job_id: enrich.result.job_id, fields });
-      toast.success("Enriched data saved"); setModal(null); load();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  const reResearch = () => {
+    setAi((s) => ({ ...s, open: true, text: "", file: null, busy: false, result: null, pick: [] }));
+    runAiResearch();
   };
   const setPref = async (patch) => {
     try { await api.patch(`/crm/leads/${id}/preferences`, patch); load(); }
@@ -306,9 +291,11 @@ export default function LeadDetail() {
           <Btn data-testid="action-schedule" variant="ghost" onClick={() => nav("/crm/meetings")}><CalendarPlus className="h-4 w-4" /> Schedule</Btn>
           <Btn data-testid="action-research" variant="ghost" onClick={aiResearch}><Sparkles className="h-4 w-4" /> Research</Btn>
           <Btn data-testid="action-agent" variant="dark" onClick={runAgent}><Bot className="h-4 w-4" /> AI Agent</Btn>
-          <Btn data-testid="action-enrich" variant="dark" onClick={runEnrich}><Sparkles className="h-4 w-4" /> Enrich</Btn>
-          <Btn data-testid="action-enrich-company" variant="dark" onClick={runCompanyEnrich}><Building2 className="h-4 w-4" /> Enrich Practice</Btn>
+          {lead.ai_research_ready && lead.ai_research_job_id && (
+            <Btn data-testid="action-review-research" onClick={() => openAiJob(lead.ai_research_job_id)}><Sparkles className="h-4 w-4" /> AI research ready — review</Btn>
+          )}
           <Btn data-testid="action-ai-enrich" variant="dark" onClick={() => setAi((s) => ({ ...s, open: true, text: "", file: null, busy: false, result: null, pick: [] }))}><FileText className="h-4 w-4" /> AI Enrich</Btn>
+          <Btn data-testid="action-reresearch" variant="ghost" onClick={reResearch}><RefreshCw className="h-4 w-4" /> Refresh from web</Btn>
         </div>
       </header>
 
@@ -556,12 +543,23 @@ export default function LeadDetail() {
               <div>
                 <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Contact / practice fields found — pick what to apply</p>
                 <div className="space-y-1 rounded-lg border border-slate-200 p-2">
-                  {Object.entries(ai.result.found).map(([k, v]) => (
-                    <label key={k} className="flex items-start gap-2 text-sm">
-                      <input type="checkbox" data-testid={`ai-pick-${k}`} checked={ai.pick.includes(k)} onChange={(e) => setAi((s) => ({ ...s, pick: e.target.checked ? [...s.pick, k] : s.pick.filter((x) => x !== k) }))} className="mt-1 h-4 w-4 accent-primary" />
-                      <span><span className="capitalize text-slate-500">{k.replace(/_/g, " ")}:</span> <span className="font-semibold text-slate-800">{String(v)}</span></span>
-                    </label>
-                  ))}
+                  {Object.entries(ai.result.found).map(([k, v]) => {
+                    const m = (ai.result.field_meta || {})[k] || {};
+                    const conf = (m.confidence || "").toUpperCase();
+                    const confCls = conf === "HIGH" ? "bg-emerald-100 text-emerald-700" : conf === "LOW" ? "bg-slate-100 text-slate-500" : "bg-amber-100 text-amber-700";
+                    let host = "";
+                    try { host = m.source ? new URL(m.source).hostname.replace(/^www\./, "") : ""; } catch { host = ""; }
+                    return (
+                      <label key={k} data-testid={`ai-pick-row-${k}`} className="flex items-start gap-2 text-sm">
+                        <input type="checkbox" data-testid={`ai-pick-${k}`} checked={ai.pick.includes(k)} onChange={(e) => setAi((s) => ({ ...s, pick: e.target.checked ? [...s.pick, k] : s.pick.filter((x) => x !== k) }))} className="mt-1 h-4 w-4 accent-primary" />
+                        <span className="min-w-0 flex-1">
+                          <span className="capitalize text-slate-500">{k.replace(/_/g, " ")}:</span> <span className="font-semibold text-slate-800">{String(v)}</span>
+                          {conf && <span data-testid={`ai-conf-${k}`} className={`ml-2 rounded px-1.5 py-0.5 align-middle text-[10px] font-bold ${confCls}`}>{conf}</span>}
+                          {host && <a href={m.source} target="_blank" rel="noreferrer" data-testid={`ai-src-${k}`} className="ml-2 align-middle text-[11px] text-primary underline hover:opacity-80">{host}</a>}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -674,47 +672,6 @@ export default function LeadDetail() {
             )}
             <Btn onClick={runAgentExecute} data-testid="agent-run" className="w-full justify-center"><Check className="h-4 w-4" /> Approve & Run</Btn>
           </div>
-        )}
-      </Modal>
-
-      <Modal open={modal === "company"} onClose={() => setModal(null)} title="Enrich Practice — Review Before Saving" wide>
-        {enrich.loading && <p className="py-6 text-center text-slate-400">Searching provider…</p>}
-        {enrich.result?.error && <p className="py-4 text-center text-red-600">{enrich.result.error}</p>}
-        {enrich.result && enrich.result.matched === false && <p className="py-4 text-center text-slate-500">No confident practice match found.</p>}
-        {enrich.result?.matched && (
-          <>
-            <p className="mb-3 text-sm text-slate-500">Confidence: <b className="text-slate-800">{enrich.result.confidence}</b>. Select the practice fields to apply.</p>
-            <div className="space-y-2">
-              {Object.entries(enrich.result.found || {}).filter(([, v]) => v).map(([k, v]) => (
-                <label key={k} data-testid={`company-field-${k}`} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
-                  <input type="checkbox" checked={!!enrich.picked[k]} onChange={(e) => setEnrich({ ...enrich, picked: { ...enrich.picked, [k]: e.target.checked } })} className="mt-1 h-4 w-4 accent-primary" />
-                  <span className="min-w-0"><span className="text-[10px] uppercase text-slate-400">{k.replace(/_/g, " ")}</span><span className="block break-words text-sm font-semibold text-slate-800">{String(v)}</span></span>
-                </label>
-              ))}
-            </div>
-            <Btn onClick={acceptCompany} data-testid="company-accept" className="mt-3 w-full justify-center"><Check className="h-4 w-4" /> Accept Selected</Btn>
-          </>
-        )}
-      </Modal>
-
-      <Modal open={modal === "enrich"} onClose={() => setModal(null)} title="✨ Enrich — Review Before Saving" wide>
-        {enrich.loading && <p className="py-6 text-center text-slate-400">Searching provider…</p>}
-        {enrich.result?.error && <p className="py-4 text-center text-red-600">{enrich.result.error}</p>}
-        {enrich.result && enrich.result.matched === false && <p className="py-4 text-center text-slate-500">No confident match found for this contact.</p>}
-        {enrich.result?.matched && (
-          <>
-            <p className="mb-3 text-sm text-slate-500">Confidence: <b className="text-slate-800">{enrich.result.confidence}</b>. Nothing is saved until you accept. Select the fields to apply.</p>
-            <div className="space-y-2">
-              {Object.entries(enrich.result.found || {}).filter(([, v]) => v && !(Array.isArray(v) && !v.length)).map(([k, v]) => (
-                <label key={k} data-testid={`enrich-field-${k}`} className="flex items-start gap-2 rounded-lg border border-slate-200 p-2">
-                  <input type="checkbox" checked={!!enrich.picked[k]} onChange={(e) => setEnrich({ ...enrich, picked: { ...enrich.picked, [k]: e.target.checked } })} className="mt-1 h-4 w-4 accent-primary" />
-                  <span className="min-w-0"><span className="text-[10px] uppercase text-slate-400">{k.replace(/_/g, " ")}</span><span className="block break-words text-sm font-semibold text-slate-800">{Array.isArray(v) ? v.join(", ") : String(v)}</span></span>
-                  <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">NEW</span>
-                </label>
-              ))}
-            </div>
-            <Btn onClick={acceptEnrich} data-testid="enrich-accept" className="mt-3 w-full justify-center"><Check className="h-4 w-4" /> Accept Selected</Btn>
-          </>
         )}
       </Modal>
     </div>
