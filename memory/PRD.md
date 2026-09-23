@@ -6,6 +6,13 @@ Convention booth lead-capture system for a healthcare services company. Runs on 
 ## Cross-Platform Note (2026-08)
 - App now spans TWO clients on one shared FastAPI+MongoDB backend: **web** (`/app/frontend`, React) and **mobile** (`/app/mobile`, Expo/React Native rep-companion). Same `/api` contract, same brand (design_guidelines.json). Mobile calls backend via `EXPO_PUBLIC_BACKEND_URL`; web via `REACT_APP_BACKEND_URL`.
 
+## v2.29 (2026-06) — Closer Handoff Alert · Digest Preview · Territory Rebalance Now
+- **Closer Handoff Alert** (`routes_push.notify_closer_assigned` + `set_closer`): the moment a lead manager is named the Closer on a lead, a dedicated **push + email** goes out ("You're the closer on a deal…", owner unchanged) so nothing sits waiting. Push logs a non-blocking `EMERGENT_PUSH_KEY` warning in preview (expected; resolves on deploy); email via Resend.
+- **Digest Preview** (`routes_digest.build_digest_preview` + `GET /crm/notifications/digest/preview`): admins/managers preview exactly what each rep's daily digest email will contain before it sends — per-rep breakdown `{rep_name,email,count,leads[]}`. Teams page card gains a **Preview** button (`digest-preview-btn`) opening a modal (`digest-preview`, empty state `digest-preview-empty`). `run_assignment_digest` now reuses the same builder (`_digest_html`).
+- **Territory Rebalance Now** (`_match_territory` helper + `POST /crm/leads/route-by-territory`): one-tap action that assigns every unassigned, non-archived lead to a member of its **matching** territory's team (round-robin); leads with no matching territory are left untouched. Returns `{routed,skipped,by_team}`. Teams header button `route-by-territory`. `auto_route_lead` refactored to share `_match_territory`.
+- Verified: testing agent iteration 26 — 6/6 backend pytest (`tests/test_iteration26_v229.py`) + web e2e; role gating confirmed (lead_manager 200 / account_manager 403 on preview + rebalance). Version badge → **v2.29**.
+
+
 ## v2.28 (2026-06) — Closer Queue · Archive Bin · Saved Medicare Views · Territory Auto-Assign · Digest Time
 - **Closer Queue** (`/crm/closer-queue`, nav `nav-closer-queue`, roles super_admin/admin/lead_manager): lead managers see every lead where they are the Closer (`GET /crm/leads?closer_id=<self>`); admins/super_admins see all leads with any closer (`GET /crm/leads?has_closer=true`, shows a Closer column). New backend filters `closer_id` + `has_closer` on `list_leads`.
 - **Archive Bin** (`/crm/archive`, admin-only, nav `nav-archive`): lists archived leads + archived opportunities with one-click **Restore** (`POST /crm/leads|opportunities/{id}/archive {archived:false}`). Non-admins are redirected.

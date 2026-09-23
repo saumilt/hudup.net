@@ -1,0 +1,49 @@
+{
+  "summary": "v2.29 web release fully verified end-to-end (backend + web UI). Backend pytest 6/6 pass. (1) Closer Handoff Alert: POST /api/crm/leads/{id}/closer sets closer, returns {ok:true, closer_name:<name>}, non-blocking push warning is logged and does NOT fail the request; passing closer_id:null clears the field and returns closer_name:null (no alert). (2) Digest Preview: GET /api/crm/notifications/digest/preview returns {window_hours,total_leads,reps:[{rep_id,rep_name,email,count,leads}]}, respects ?window_hours=, allowed for lead_manager (Fatema/Sam), forbidden for account_manager (403). Modal on /crm/teams opens correctly (data-testid digest-preview), listed 10 leads across 3 reps with lead_number/name/tier per rep. (3) Territory Rebalance: POST /api/crm/leads/route-by-territory routes unassigned leads to their matching territory's team round-robin (NY→East team, routing_reason starts with 'Territory rebalance'), skips leads with no matching territory (no-state ZZTEST lead stayed unassigned), returns {ok,routed,skipped,by_team}; account_manager gets 403. Teams header button (route-by-territory) fires the endpoint and toasts the routed/skipped summary ('Routed X to their territory team'); existing 'Route Unassigned' button still present and functional. Regression: creating a lead via POST /api/crm/leads still auto-routes (territory match happens). Only outstanding note is the pre-existing cosmetic <span>-inside-<option> hydration warning on the Dashboard, carried from v2.27/v2.28 — non-blocking, not v2.29-caused.",
+  "platforms_tested": ["web"],
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Dashboard (unchanged from v2.28)", "issues": ["Carry-over: React hydration console warning '<span> cannot be a child of <option>' (from tier <select>). Non-functional, dropdown renders correctly."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration26_v229.py",
+    "/app/test_reports/pytest/pytest_iter26.xml"
+  ],
+  "action_items": [
+    "No blocking issues. v2.29 is ready to ship.",
+    "(Optional / carry-over) Fix the <span>-inside-<option> hydration warning in Dashboard tier <select> — same one flagged in iteration_25.",
+    "(Env note, not a v2.29 bug) fatema@healthandmore.net still has must_change_pin=true in the preview DB, so logging in as her forces /change-pin. Testing switched to super_admin sam@healthandmore.net which has the same manager+ visibility for the Digest Preview + Territory Rebalance UI. Backend permission check for lead_manager was covered via pytest using the lead_manager role guard directly.",
+    "Cleanup: v2.29 test suite creates ZZTEST v229 * leads (closer, rebalance NY, rebalance nostate, autoroute NY). Fixture archives them at teardown, but a bulk archive of any org_name matching 'ZZTEST' is safe."
+  ],
+  "critical_code_review_comments": [
+    "routes_teams.py:218-239 route_by_territory: uses to_list(5000) on unassigned+non-archived leads. For very large backlogs this silently caps. Consider a cursor or paginated worker.",
+    "routes_teams.py:230-231 _rr_team_pick returning None (empty team) increments 'skipped' but does not distinguish 'no territory' vs 'team has no members' in the response. Adding a small 'skipped_reasons' breakdown would help admins triage.",
+    "routes_digest.py:31-54 build_digest_preview: fetches up to 10000 leads then does a per-rep users.find_one in a loop → N+1 read pattern. Batch the user lookup with a single $in query.",
+    "routes_digest.py:87-96 both trigger_digest (POST /digest/run) and digest_preview (GET /digest/preview) are guarded by MANAGER (lead_manager+). Spec allows lead_manager for preview but the review request says account_manager should be 403; that's already the case, so ok. However, /digest/run is triggerable by any lead_manager — if this should be admin-only, tighten to require_admin.",
+    "routes_push.py:113-135 notify_closer_assigned swallows all push+email errors as warnings (correct for non-blocking) — good, matches spec that 'EMERGENT_PUSH_KEY missing or invalid' must not fail the request. Verified.",
+    "Teams.js:88-98 routeByTerritory uses window.confirm() which is jarring on modern UIs. A Sonner confirm/dialog would fit the rest of the UX; non-blocking.",
+    "Teams.js digest-preview modal: renders all reps at once; if there are many reps + long lists this can be tall. Preview already caps each rep's lead list at 25 with a '…and N more' hint — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration26_v229.py",
+    "/app/test_reports/iteration_26.json",
+    "/app/test_reports/pytest/pytest_iter26.xml"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100%"},
+  "test_credentials": "super_admin sam@healthandmore.net/8677 (used for UI + admin API calls), admin admin@boothiq.com/482913, lead_manager fatema@healthandmore.net/125148 (still forced to /change-pin in preview — used at API level only), account_manager accountmanager@boothiq.com/528174 (403 verified for digest preview + route-by-territory).",
+  "seed_data_creation": "Pytest module creates ZZTEST v229 * leads (closer, rebalance NY, rebalance nostate, autoroute NY) — a fixture archives them at teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "v2.29 fully green on web + backend. Regression suite at /app/backend/tests/test_iteration26_v229.py covers: POST /crm/leads/{id}/closer set+clear, GET /crm/notifications/digest/preview (lm 200 / am 403), POST /crm/leads/route-by-territory (routes NY→East team, skips no-state, am 403), and auto-route regression on POST /crm/leads. Run pytest with '-o addopts=' to disable xdist inherited from pytest.ini. Note: fatema@healthandmore.net has must_change_pin=true in preview DB, log in as sam@healthandmore.net (super_admin) instead for UI-level manager+ testing.",
+  "rca of the issue": "N/A — no bugs found."
+}

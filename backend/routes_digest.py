@@ -28,8 +28,8 @@ async def _digest_settings() -> dict:
     }
 
 
-async def run_assignment_digest(window_hours: int = 24) -> dict:
-    """Email each rep a summary of leads assigned to them within the window."""
+async def build_digest_preview(window_hours: int = 24) -> dict:
+    """Per-rep breakdown of leads assigned within the window (used by preview + send)."""
     since = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
     leads = await db.crm_leads.find(
         {"routed_at": {"$gte": since}, "account_manager_id": {"$ne": None}},
@@ -38,38 +38,62 @@ async def run_assignment_digest(window_hours: int = 24) -> dict:
     by_rep: dict = {}
     for l in leads:
         by_rep.setdefault(l["account_manager_id"], []).append(l)
-    sent = 0
-    from emailer import send_email
+    reps = []
     for rep_id, items in by_rep.items():
-        user = await db.users.find_one({"id": rep_id}, {"_id": 0, "email": 1, "name": 1})
-        if not user or not user.get("email"):
+        u = await db.users.find_one({"id": rep_id}, {"_id": 0, "email": 1, "name": 1})
+        rep_leads = []
+        for l in items:
+            nm = (l.get("org_name")
+                  or f"{l.get('contact_first', '')} {l.get('contact_last', '')}".strip()
+                  or l.get("lead_number"))
+            rep_leads.append({"id": l.get("id"), "lead_number": l.get("lead_number"), "name": nm,
+                              "tier": (l.get("medicare_snapshot") or {}).get("tier_340b") or "—"})
+        reps.append({"rep_id": rep_id, "rep_name": (u or {}).get("name") or "Unknown",
+                     "email": (u or {}).get("email"), "count": len(rep_leads), "leads": rep_leads})
+    reps.sort(key=lambda r: r["count"], reverse=True)
+    return {"window_hours": window_hours, "total_leads": len(leads), "reps": reps}
+
+
+def _digest_html(rep_name: str, items: list, window_hours: int) -> str:
+    rows = ""
+    for l in items[:25]:
+        rows += (f"<li><b>{l['lead_number']}</b> — {l['name']} "
+                 f"<span style='color:#888'>({l['tier']} 340B)</span></li>")
+    more = f"<p>…and {len(items) - 25} more.</p>" if len(items) > 25 else ""
+    return (f"<p>Hi {rep_name or 'there'},</p>"
+            f"<p>You had <b>{len(items)}</b> new lead(s) assigned to you in the last {window_hours} hours:</p>"
+            f"<ul>{rows}</ul>{more}"
+            f"<p>Sign in to BoothIQ to start working them.</p>")
+
+
+async def run_assignment_digest(window_hours: int = 24) -> dict:
+    """Email each rep a summary of leads assigned to them within the window."""
+    preview = await build_digest_preview(window_hours)
+    from emailer import send_email
+    sent = 0
+    for rep in preview["reps"]:
+        if not rep.get("email"):
             continue
-        rows = ""
-        for l in items[:25]:
-            name = (l.get("org_name")
-                    or f"{l.get('contact_first', '')} {l.get('contact_last', '')}".strip()
-                    or l.get("lead_number"))
-            tier = (l.get("medicare_snapshot") or {}).get("tier_340b") or "—"
-            rows += f"<li><b>{l.get('lead_number')}</b> — {name} <span style='color:#888'>({tier} 340B)</span></li>"
-        more = f"<p>…and {len(items) - 25} more.</p>" if len(items) > 25 else ""
-        html = (f"<p>Hi {user.get('name') or 'there'},</p>"
-                f"<p>You had <b>{len(items)}</b> new lead(s) assigned to you in the last {window_hours} hours:</p>"
-                f"<ul>{rows}</ul>{more}"
-                f"<p>Sign in to BoothIQ to start working them.</p>")
         try:
-            await send_email(to=user["email"],
-                             subject=f"BoothIQ — {len(items)} new lead(s) assigned to you",
-                             html=html)
+            await send_email(to=rep["email"],
+                             subject=f"BoothIQ — {rep['count']} new lead(s) assigned to you",
+                             html=_digest_html(rep["rep_name"], rep["leads"], window_hours))
             sent += 1
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"Digest email failed for {rep_id} (non-blocking): {e}")
-    return {"reps_notified": sent, "total_leads": len(leads)}
+            logger.warning(f"Digest email failed for {rep['rep_id']} (non-blocking): {e}")
+    return {"reps_notified": sent, "total_leads": preview["total_leads"]}
 
 
 @router.post("/digest/run")
 async def trigger_digest(window_hours: int = 24, user=Depends(MANAGER)):
     """Manual trigger (managers) — useful for testing the digest on demand."""
     return await run_assignment_digest(window_hours)
+
+
+@router.get("/digest/preview")
+async def digest_preview(window_hours: int = 24, user=Depends(MANAGER)):
+    """Preview exactly what each rep's daily digest email will contain (no send)."""
+    return await build_digest_preview(window_hours)
 
 
 @router.get("/digest/settings")

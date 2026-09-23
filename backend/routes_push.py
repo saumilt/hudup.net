@@ -108,3 +108,40 @@ async def notify_lead_assigned(am_id: str, lead: dict) -> None:
         )
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Push failed (non-blocking): {e}")
+
+
+async def notify_closer_assigned(closer_id: str, lead: dict, actor_name: str | None = None) -> None:
+    """Non-blocking push + email the moment a lead manager is named the Closer on a lead."""
+    if not closer_id:
+        return
+    from deps import db
+    user = await db.users.find_one({"id": closer_id}, {"_id": 0, "email": 1, "name": 1})
+    if not user:
+        return
+    name = (lead.get("org_name")
+            or f"{lead.get('contact_first', '')} {lead.get('contact_last', '')}".strip()
+            or lead.get("lead_number") or "a lead")
+    lead_no = lead.get("lead_number") or ""
+    by = f" by {actor_name}" if actor_name else ""
+    title = "You're the closer on a deal"
+    msg = f"You were set as the closer on {name}{by}. Time to close it."
+    try:
+        await send_push(
+            recipients=[closer_id],
+            data={"title": title, "message": msg, "action_url": f"/lead/{lead.get('id')}"},
+            idempotency_key=f"closer-{lead.get('id')}-{closer_id}",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Closer push failed (non-blocking): {e}")
+    try:
+        from emailer import send_email
+        if user.get("email"):
+            html = (f"<p>Hi {user.get('name') or 'there'},</p>"
+                    f"<p>You've been named the <b>closer</b> on <b>{lead_no}</b> — {name}{by}.</p>"
+                    f"<p>The account manager stays the owner; you're on point to close it. "
+                    f"Sign in to BoothIQ and pick it up so nothing sits waiting.</p>")
+            await send_email(to=user["email"],
+                             subject=f"BoothIQ — you're the closer on {lead_no or name}",
+                             html=html)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Closer email failed (non-blocking): {e}")

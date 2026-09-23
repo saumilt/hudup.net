@@ -138,29 +138,31 @@ async def _apply_assignment(lead: dict, am_id: str, team_id: str | None,
     return am_id
 
 
-async def auto_route_lead(lead: dict, actor: dict | None = None,
-                          source_kind: str = "manual") -> str | None:
-    """Route a lead. First match a territory by state and/or specialty and round-robin
-    across that team. If nothing matches, fall back by origin: a manually-entered lead
-    goes to its creator; a bulk-imported (or manager-triggered) lead round-robins across
-    all account managers. Returns the assigned account_manager id, or None."""
+async def _match_territory(lead: dict) -> dict | None:
+    """Return the first territory whose state and/or specialty rules match the lead."""
     state = (lead.get("state") or (lead.get("medicare_snapshot") or {}).get("state") or "").upper()
     spec = (lead.get("specialty") or (lead.get("medicare_snapshot") or {}).get("specialty") or "").lower()
-
-    # 1) Territory match (state and/or specialty).
     terrs = await db.territories.find({}, {"_id": 0}).to_list(200)
-    matched_team_id, matched_terr = None, None
     for t in terrs:
         if not (t.get("states") or t.get("specialties")):
             continue
         st_ok = (not t.get("states")) or state in t.get("states", [])
         sp_ok = (not t.get("specialties")) or any(s and s.lower() in spec for s in t.get("specialties", []))
         if st_ok and sp_ok:
-            matched_team_id, matched_terr = t["team_id"], t
-            break
+            return t
+    return None
 
-    if matched_team_id:
-        team = await db.teams.find_one({"id": matched_team_id})
+
+async def auto_route_lead(lead: dict, actor: dict | None = None,
+                          source_kind: str = "manual") -> str | None:
+    """Route a lead. First match a territory by state and/or specialty and round-robin
+    across that team. If nothing matches, fall back by origin: a manually-entered lead
+    goes to its creator; a bulk-imported (or manager-triggered) lead round-robins across
+    all account managers. Returns the assigned account_manager id, or None."""
+    # 1) Territory match (state and/or specialty).
+    matched_terr = await _match_territory(lead)
+    if matched_terr:
+        team = await db.teams.find_one({"id": matched_terr["team_id"]})
         am_id = await _rr_team_pick(team) if team else None
         if am_id:
             return await _apply_assignment(
@@ -211,6 +213,30 @@ async def route_unassigned(user=Depends(MANAGER)):
         if await auto_route_lead(lead, user, source_kind="bulk"):
             n += 1
     return {"ok": True, "routed": n}
+
+
+@router.post("/leads/route-by-territory")
+async def route_by_territory(user=Depends(MANAGER)):
+    """One-tap rebalance: assign every unassigned lead to a member of its MATCHING
+    territory's team (round-robin). Leads with no matching territory are left untouched."""
+    leads = await db.crm_leads.find(
+        {"archived": {"$ne": True},
+         "$or": [{"account_manager_id": None}, {"account_manager_id": {"$exists": False}}]},
+        {"_id": 0}).to_list(5000)
+    routed, skipped, by_team = 0, 0, {}
+    for lead in leads:
+        terr = await _match_territory(lead)
+        team = await db.teams.find_one({"id": terr["team_id"]}) if terr else None
+        am_id = await _rr_team_pick(team) if team else None
+        if not am_id:
+            skipped += 1
+            continue
+        await _apply_assignment(
+            lead, am_id, team["id"], user,
+            f"Territory rebalance → {team['name']} — territory “{terr['name']}”")
+        routed += 1
+        by_team[team["name"]] = by_team.get(team["name"], 0) + 1
+    return {"ok": True, "routed": routed, "skipped": skipped, "by_team": by_team}
 
 
 @router.post("/leads/{lead_id}/route-to-territory")

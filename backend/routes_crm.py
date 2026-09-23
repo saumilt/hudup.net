@@ -386,8 +386,8 @@ async def set_closer(lead_id: str, data: CloserInput, user=Depends(ANY_CRM)):
                        f"Closer set to {name}" if data.closer_id else "Closer removed"))
     if data.closer_id:
         try:
-            from routes_push import notify_lead_assigned
-            await notify_lead_assigned(data.closer_id, {**lead, "id": lead_id})
+            from routes_push import notify_closer_assigned
+            await notify_closer_assigned(data.closer_id, {**lead, "id": lead_id}, user.get("name"))
         except Exception:
             pass
     return {"ok": True, "closer_name": name}

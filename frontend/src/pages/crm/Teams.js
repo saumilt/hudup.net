@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { Btn, Modal, Field, inputCls, money } from "@/components/crm/kit";
-import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2, Clock, Send } from "lucide-react";
+import { Network, Plus, MapPin, Shuffle, BarChart3, Scale, Pencil, Trash2, Clock, Send, Eye } from "lucide-react";
 
 function Bar({ actual, target, fmt }) {
   const pct = target ? Math.min(100, Math.round((actual / target) * 100)) : 0;
@@ -32,6 +32,7 @@ export default function Teams() {
   const [teamEditId, setTeamEditId] = useState(null);
   const [terrEditId, setTerrEditId] = useState(null);
   const [digest, setDigest] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   const load = useCallback(async () => {
     const [a, t, tr, q, b, d] = await Promise.all([
@@ -88,6 +89,18 @@ export default function Teams() {
     try { const r = await api.post("/crm/routing/rebalance"); toast.success(r.data.moved ? `Rebalanced ${r.data.moved} lead(s)` : "Already balanced"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
+  const routeByTerritory = async () => {
+    if (!window.confirm("Route every unassigned lead to its matching territory's team?")) return;
+    try {
+      const r = await api.post("/crm/leads/route-by-territory");
+      toast.success(`Routed ${r.data.routed} to their territory team${r.data.skipped ? ` · ${r.data.skipped} skipped (no matching territory)` : ""}`);
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+  const openDigestPreview = async () => {
+    try { const r = await api.get("/crm/notifications/digest/preview"); setPreview(r.data); setModal("digest-preview"); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
   const saveQuota = async (row, patch) => {
     try { await api.put("/crm/quotas", { user_id: row.user_id, leads_target: row.leads_target, meetings_target: row.meetings_target, opps_target: row.opps_target, revenue_target: row.revenue_target, ...patch }); toast.success("Quota saved"); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -115,6 +128,7 @@ export default function Teams() {
   return (
     <div>
       <PageHeader title="Teams & Territories" subtitle="Hierarchy, round-robin routing and quotas">
+        <Btn variant="ghost" onClick={routeByTerritory} data-testid="route-by-territory"><MapPin className="h-4 w-4" /> Territory Rebalance</Btn>
         <Btn variant="ghost" onClick={routeUnassigned} data-testid="route-unassigned"><Shuffle className="h-4 w-4" /> Route Unassigned</Btn>
         <Btn onClick={openNewTerr} data-testid="terr-create-btn"><MapPin className="h-4 w-4" /> New Territory</Btn>
         <Btn onClick={openNewTeam} data-testid="team-create-btn"><Plus className="h-4 w-4" /> New Team</Btn>
@@ -158,7 +172,10 @@ export default function Teams() {
           <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5" data-testid="digest-settings">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 font-display font-bold text-slate-900"><Clock className="h-4 w-4 text-primary" /> Daily Assignment Digest</h2>
-              <Btn variant="ghost" onClick={sendDigestNow} data-testid="digest-send-now"><Send className="h-4 w-4" /> Send now</Btn>
+              <div className="flex flex-shrink-0 gap-1">
+                <Btn variant="ghost" onClick={openDigestPreview} data-testid="digest-preview-btn"><Eye className="h-4 w-4" /> Preview</Btn>
+                <Btn variant="ghost" onClick={sendDigestNow} data-testid="digest-send-now"><Send className="h-4 w-4" /> Send now</Btn>
+              </div>
             </div>
             <p className="mb-4 text-sm text-slate-500">One summary email per rep of the leads assigned to them each day. {isAdmin ? "Pick when it goes out." : "Only admins can change the schedule."}</p>
             <div className="flex flex-wrap items-end gap-4">
@@ -271,6 +288,30 @@ export default function Teams() {
           </select>
         </Field>
         <Btn onClick={saveTerr} data-testid="terr-save" className="mt-2 w-full justify-center">{terrEditId ? "Save Changes" : "Create Territory"}</Btn>
+      </Modal>
+
+      <Modal open={modal === "digest-preview"} onClose={() => setModal(null)} title="Digest Preview — last 24h">
+        {preview && (
+          <div className="space-y-3" data-testid="digest-preview">
+            <p className="text-sm text-slate-500">{preview.total_leads} lead(s) across {preview.reps.length} rep(s) assigned in the last {preview.window_hours}h. This is exactly what each rep will receive.</p>
+            {preview.reps.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-400" data-testid="digest-preview-empty">No leads were assigned in the window — no emails would go out.</p>}
+            {preview.reps.map((r) => (
+              <div key={r.rep_id} className="rounded-lg border border-slate-200 p-3" data-testid={`digest-preview-rep-${r.rep_id}`}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-800">{r.rep_name}</span>
+                  <span className="text-xs text-slate-400">{r.email || "no email on file"}</span>
+                </div>
+                <p className="mb-2 text-xs font-semibold text-primary">{r.count} new lead(s)</p>
+                <ul className="space-y-1 text-sm text-slate-600">
+                  {r.leads.slice(0, 25).map((l) => (
+                    <li key={l.id}><span className="font-mono text-xs text-slate-400">{l.lead_number}</span> {l.name} <span className="text-slate-400">({l.tier} 340B)</span></li>
+                  ))}
+                </ul>
+                {r.count > 25 && <p className="mt-1 text-xs text-slate-400">…and {r.count - 25} more.</p>}
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
     </div>
   );
