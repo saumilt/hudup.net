@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 27: Validated geospatial + referral-network features on web + shared backend. Backend 6/6 pytest passed (geo/resolve by ZIP & city, invalid origin 400, geo/coverage with filter respected, referral-generators/counts, lead creation with referral_generator_id + filter). Frontend end-to-end on Medicare Search and Referral Search all passed: Miles & Drive-time modes, Leaflet map render (61 paths MS / 50 paths RS, radius circle + origin pin + city pins), Save view/generator persists radius on reload, add-lead from referral row links referral_generator_id, 'X leads' badge updates to '1 leads', clicking opens produced-leads modal with the newly created lead (L-00502). No blocking issues.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": [
+        {"screen": "Any page using a <select> with styled <option>", "issues": ["React hydration warning in console: '<span> cannot be a child of <option>'. Non-blocking but should be cleaned up (likely from a select used in ProtectedRoute-rendered page). Occurs on both Medicare Search and Referral Search."]}
+      ]
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration27_geo_referral.py",
+    "/app/test_reports/pytest/pytest_iter27.xml"
+  ],
+  "action_items": [
+    "(Minor) Investigate console warning: a <span> is being rendered inside an <option> somewhere in the app (hydration error). Likely a shadcn Select vs raw <option> mismatch. Not blocking the geospatial/referral features."
+  ],
+  "critical_code_review_comments": [
+    "geo.py: _CITY_CENTROID is built at import time from pgeocode's internal _data (uses private attribute _nomi._data). Works today but is fragile across pgeocode upgrades.",
+    "routes_crm.py list_leads radius branch loads up to 5000 leads into memory then filters in Python — fine for current volume but should move the (state,city) in-filter into the Mongo query (e.g., build $or using radius_city_filter) for scalability.",
+    "CoverageMap uses MapContainer key keyed on origin+radius forcing full remount on every change — acceptable but can flicker; consider using map.setView instead for smoother UX.",
+    "ReferralSearch registers a dialog handler via window.prompt for an unnamed save; main flow is fine, but ensure popup blocker / embedded contexts don't swallow the prompt."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration27_geo_referral.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "sam@healthandmore.net / 8677 (super_admin) — used; redirect lands on /home, not /crm.",
+  "seed_data_creation": "Created and removed TEST_radius_view saved search; created TEST_Dr_Smith_Cardio referral generator (saved search) and a derived lead L-00502 (Dr. Janelle Duah) — generator removed after test, but lead remains in CRM and is still linked to the (now-deleted) generator id. Main agent may want to script a cleanup for orphan referral_generator_id leads if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest file /app/backend/tests/test_iteration27_geo_referral.py covers the four new backend endpoints and the full referral linkage. Web UI tested at viewport 1920x1080. Only outstanding non-blocking finding is a React hydration warning (<span> inside <option>) emitted on the CRM pages — pre-existing, not caused by the new features.",
+  "rca of the issue": ""
+}

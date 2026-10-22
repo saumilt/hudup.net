@@ -109,12 +109,7 @@ class SimpleSearch(BaseModel):
     page_size: int = 25
 
 
-@router.post("/search")
-async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
-    sids = await _session_ids_for_year(data.dataset_year)
-    if not sids:
-        return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
-                "message": f"No dataset found for year {data.dataset_year}"}
+def _build_simple_q(data: "SimpleSearch", sids: list) -> dict:
     q: dict = {"session_id": {"$in": sids}}
     if data.npi:
         q["npi"] = data.npi.strip()
@@ -145,23 +140,40 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
         q["tier_340b"] = data.tier_340b
     if data.tier_rpm:
         q["tier_rpm"] = data.tier_rpm
+    return q
 
-    origin = None
+
+async def _radius_context(data: "SimpleSearch"):
+    """Resolve radius origin + the provider cities + Mongo geo filter.
+    Returns (origin, cities, geo_filter, error). origin is None when no radius."""
+    if not (data.radius_mi and data.radius_mi > 0):
+        return None, None, None, None
+    origin = await geo.geocode_origin(data.origin_address, data.origin_city,
+                                      data.origin_state, data.origin_zip)
+    if not origin:
+        return None, None, None, "Could not locate that address / city / ZIP. Try a ZIP or 'City, ST'."
+    await geo.build_city_geo()
+    cities = await geo.provider_cities_in_radius(origin["lat"], origin["lon"], data.radius_mi)
+    return origin, cities, geo.radius_city_filter(cities), None
+
+
+@router.post("/search")
+async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
+    sids = await _session_ids_for_year(data.dataset_year)
+    if not sids:
+        return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
+                "message": f"No dataset found for year {data.dataset_year}"}
+    q = _build_simple_q(data, sids)
+
+    origin, cities, geo_filter, err = await _radius_context(data)
     radius_cities = None
-    if data.radius_mi and data.radius_mi > 0:
-        origin = await geo.geocode_origin(data.origin_address, data.origin_city,
-                                          data.origin_state, data.origin_zip)
-        if not origin:
-            return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
-                    "message": "Could not locate that address / city / ZIP"}
-        await geo.build_city_geo()
-        cities = await geo.provider_cities_in_radius(origin["lat"], origin["lon"], data.radius_mi)
+    if err:
+        return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size, "message": err}
+    if origin is not None:
         radius_cities = len(cities)
-        geo_filter = geo.radius_city_filter(cities)
         if not geo_filter:
             return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
-                    "origin": origin, "radius_cities": 0,
-                    "message": "No provider cities within that radius"}
+                    "origin": origin, "radius_cities": 0, "message": "No provider cities within that radius"}
         q.pop("city", None)
         q.pop("state", None)
         q = {"$and": [q, geo_filter]}
@@ -186,6 +198,44 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
     if origin is not None:
         resp["origin"] = origin
         resp["radius_cities"] = radius_cities
+    return resp
+
+
+@router.post("/geo/coverage")
+async def geo_coverage(data: SimpleSearch, user=Depends(CRM_VIEW)):
+    """Per-city match counts within the radius (respecting all filters) for the map view."""
+    sids = await _session_ids_for_year(data.dataset_year)
+    if not sids:
+        return {"origin": None, "total": 0, "cities": []}
+    q = _build_simple_q(data, sids)
+    origin, cities, geo_filter, err = await _radius_context(data)
+    if err:
+        raise HTTPException(400, err)
+    if origin is not None:
+        if not geo_filter:
+            return {"origin": origin, "total": 0, "cities": []}
+        q.pop("city", None)
+        q.pop("state", None)
+        q = {"$and": [q, geo_filter]}
+    pipeline = [{"$match": q},
+                {"$group": {"_id": {"state": "$state", "city": "$city"}, "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}}, {"$limit": 1500}]
+    agg = await db.physicians.aggregate(pipeline).to_list(1500)
+    centroid = {(c["state"], c["city"]): (c.get("lat"), c.get("lon")) for c in (cities or [])}
+    out, total = [], 0
+    for a in agg:
+        st, cty, cnt = a["_id"].get("state"), a["_id"].get("city"), a["count"]
+        total += cnt
+        ll = centroid.get((st, cty))
+        if not ll or ll[0] is None:
+            gc = geo.city_centroid(cty, st) if (cty and st) else None
+            ll = (gc[0], gc[1]) if gc else None
+        if not ll:
+            continue
+        out.append({"state": st, "city": cty, "count": cnt, "lat": ll[0], "lon": ll[1]})
+    resp = {"origin": origin, "total": total, "cities": out}
+    if origin is not None:
+        resp["radius_mi"] = data.radius_mi
     return resp
 
 

@@ -135,7 +135,8 @@ async def provider_cities_in_radius(lat, lon, radius_mi) -> list:
     for d in cache:
         dist = haversine_mi(lat, lon, d["lat"], d["lon"])
         if dist <= radius_mi:
-            out.append({"state": d["state"], "city": d["city"], "distance_mi": round(dist, 1)})
+            out.append({"state": d["state"], "city": d["city"], "lat": d["lat"],
+                        "lon": d["lon"], "distance_mi": round(dist, 1)})
     out.sort(key=lambda x: x["distance_mi"])
     return out
 

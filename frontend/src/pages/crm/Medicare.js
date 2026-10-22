@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/crm/CrmShell";
 import { TierPill, money, Btn, Field, inputCls, EmptyState, Modal } from "@/components/crm/kit";
 import { Search, Plus, Filter, Save, ChevronLeft, ChevronRight, ChevronDown, Bookmark, Trash2, MapPin } from "lucide-react";
+import CoverageMap from "@/components/crm/CoverageMap";
+import RadiusControls, { effectiveMiles, radiusLabel } from "@/components/crm/RadiusControls";
 
 const TIERS = ["", "GREEN", "YELLOW", "BLUE", "RED"];
 const COLORS = ["GREEN", "YELLOW", "BLUE", "RED"];
@@ -43,7 +45,9 @@ function MultiSelect({ label, options, selected, onChange, testid, disabled }) {
 
 export default function Medicare() {
   const [years, setYears] = useState([2024]);
-  const [form, setForm] = useState({ dataset_year: 2024, npi: "", last_name: "", first_name: "", specialty: "", tier_rpm: "", states: [], cities: [], tiers: [], origin: "", radius_mi: 0, sort: "tot_cost", page: 1, page_size: 25 });
+  const [form, setForm] = useState({ dataset_year: 2024, npi: "", last_name: "", first_name: "", specialty: "", tier_rpm: "", states: [], cities: [], tiers: [], origin: "", radius: { mode: "mi", miles: 0, driveMin: 0, mph: 45 }, sort: "tot_cost", page: 1, page_size: 25 });
+  const [view, setView] = useState("list"); // result view: list | map
+  const [coverage, setCoverage] = useState(null);
   const [stateOpts, setStateOpts] = useState([]);
   const [cityOpts, setCityOpts] = useState([]);
   const [data, setData] = useState({ results: [], total: 0 });
@@ -85,8 +89,13 @@ export default function Medicare() {
         const r = await api.post("/medicare/advanced-search", { dataset_year: form.dataset_year, connector, conditions: conds, sort: form.sort, page, page_size: form.page_size });
         setData(r.data);
       } else {
-        const r = await api.post("/medicare/search", { ...form, radius_mi: form.radius_mi || 0, ...parseOrigin(form.origin), page });
+        const effMi = effectiveMiles(form.radius);
+        const payload = { ...form, radius_mi: effMi, ...parseOrigin(form.origin), page };
+        const r = await api.post("/medicare/search", payload);
         setData(r.data);
+        if (effMi > 0 && r.data.origin) {
+          try { const cov = await api.post("/medicare/geo/coverage", payload); setCoverage(cov.data); } catch { setCoverage(null); }
+        } else { setCoverage(null); setView("list"); }
       }
       setForm((f) => ({ ...f, page }));
     } catch (e) {
@@ -125,8 +134,8 @@ export default function Medicare() {
     await api.post("/crm/saved-searches", { name, entity: "medicare", query: mode === "advanced" ? { mode, connector, conditions: conds, dataset_year: form.dataset_year } : { mode, ...form } });
     toast.success("View saved"); loadSaved();
   };
-  const applyView = async (view) => {
-    const qv = view.query || {};
+  const applyView = async (sv) => {
+    const qv = sv.query || {};
     if (qv.mode === "advanced") {
       setMode("advanced"); setConnector(qv.connector || "AND"); setConds(qv.conditions || []);
       setForm((f) => ({ ...f, dataset_year: qv.dataset_year || f.dataset_year, page: 1 }));
@@ -135,9 +144,13 @@ export default function Medicare() {
       catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setLoading(false); }
       return;
     }
-    const next = { ...form, npi: qv.npi || "", last_name: qv.last_name || "", first_name: qv.first_name || "", specialty: qv.specialty || "", tier_rpm: qv.tier_rpm || "", states: qv.states || [], cities: qv.cities || [], tiers: qv.tiers || [], origin: qv.origin || "", radius_mi: qv.radius_mi || 0, dataset_year: qv.dataset_year || form.dataset_year, page: 1 };
+    const next = { ...form, npi: qv.npi || "", last_name: qv.last_name || "", first_name: qv.first_name || "", specialty: qv.specialty || "", tier_rpm: qv.tier_rpm || "", states: qv.states || [], cities: qv.cities || [], tiers: qv.tiers || [], origin: qv.origin || "", radius: qv.radius || { mode: "mi", miles: qv.radius_mi || 0, driveMin: 0, mph: 45 }, dataset_year: qv.dataset_year || form.dataset_year, page: 1 };
     setMode("simple"); setForm(next); setLoading(true);
-    try { const r = await api.post("/medicare/search", { ...next, radius_mi: next.radius_mi || 0, ...parseOrigin(next.origin), page: 1 }); setData(r.data); toast.success(`Loaded “${view.name}”`); }
+    try {
+      const payload = { ...next, radius_mi: effectiveMiles(next.radius), ...parseOrigin(next.origin), page: 1 };
+      const r = await api.post("/medicare/search", payload); setData(r.data); toast.success(`Loaded “${sv.name}”`);
+      if (effectiveMiles(next.radius) > 0 && r.data.origin) { try { const cov = await api.post("/medicare/geo/coverage", payload); setCoverage(cov.data); } catch { setCoverage(null); } } else { setCoverage(null); }
+    }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail)); } finally { setLoading(false); }
   };
   const deleteView = async (sid) => {
@@ -197,15 +210,8 @@ export default function Medicare() {
               <Field label="Near — address, city, or ZIP (radius search)">
                 <input data-testid="ms-origin" value={form.origin} onChange={(e) => setForm({ ...form, origin: e.target.value })} placeholder="06510 · New Haven, CT · 200 First St SW, Rochester, MN" className={`${inputCls} min-w-[280px]`} />
               </Field>
-              <Field label="Radius (mi)">
-                <input data-testid="ms-radius" type="number" min={0} value={form.radius_mi || ""} onChange={(e) => setForm({ ...form, radius_mi: Number(e.target.value) })} placeholder="0" className={`${inputCls} w-24`} />
-              </Field>
-              <div className="flex flex-wrap gap-1 pb-1">
-                {[10, 25, 50, 100].map((r) => (
-                  <button key={r} type="button" data-testid={`ms-radius-${r}`} onClick={() => setForm({ ...form, radius_mi: r })} className={`rounded-full px-2.5 py-1 text-xs font-bold ${form.radius_mi === r ? "bg-primary text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{r}mi</button>
-                ))}
-                {form.radius_mi > 0 && <button type="button" data-testid="ms-radius-clear" onClick={() => setForm({ ...form, radius_mi: 0, origin: "" })} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-200">Clear</button>}
-              </div>
+              <RadiusControls idPrefix="ms" value={form.radius} onChange={(radius) => setForm({ ...form, radius })} />
+              {effectiveMiles(form.radius) > 0 && <button type="button" data-testid="ms-radius-clear" onClick={() => setForm({ ...form, origin: "", radius: { ...form.radius, miles: 0, driveMin: 0 } })} className="mb-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-200">Clear</button>}
             </div>
             <div className="col-span-2 flex items-end md:col-span-4"><Btn onClick={() => runSearch(1)} data-testid="ms-search"><Search className="h-4 w-4" /> Search</Btn></div>
           </div>
@@ -237,10 +243,22 @@ export default function Medicare() {
 
         {/* results */}
         {data.origin && (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-slate-600" data-testid="ms-radius-banner">
-            <MapPin className="h-4 w-4 text-primary" /> Showing doctors within <b>{form.radius_mi} mi</b> of <b>{data.origin.label}</b> — <b>{data.radius_cities}</b> nearby cities.
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-slate-600" data-testid="ms-radius-banner">
+            <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-primary" /> Showing doctors within <b>{radiusLabel(form.radius)}</b> of <b>{data.origin.label}</b> — <b>{data.radius_cities}</b> nearby cities.</span>
+            <div className="flex gap-1">
+              <button type="button" data-testid="ms-view-list" onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-xs font-bold ${view === "list" ? "bg-primary text-white" : "bg-white text-slate-500"}`}>List</button>
+              <button type="button" data-testid="ms-view-map" onClick={() => setView("map")} className={`rounded-full px-3 py-1 text-xs font-bold ${view === "map" ? "bg-primary text-white" : "bg-white text-slate-500"}`}>Map</button>
+            </div>
           </div>
         )}
+        {data.origin && view === "map" && (
+          <div className="mb-4" data-testid="ms-map-wrap">
+            <CoverageMap origin={data.origin} radiusMi={effectiveMiles(form.radius)} cities={coverage?.cities || []} />
+            <p className="mt-1 text-xs text-slate-400">{coverage ? `${coverage.total} matching doctors across ${coverage.cities.length} cities` : "Loading coverage…"}</p>
+          </div>
+        )}
+        {!(data.origin && view === "map") && (
+        <>
         <div className="mb-3 flex items-center justify-between">
           <Btn variant="dark" onClick={bulkCreate} data-testid="ms-bulk-create"><Plus className="h-4 w-4" /> Create leads from selected</Btn>
           <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -283,6 +301,8 @@ export default function Medicare() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

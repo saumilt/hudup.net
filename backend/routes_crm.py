@@ -84,6 +84,8 @@ class LeadInput(BaseModel):
     state: str | None = None
     lead_manager_id: str | None = None
     account_manager_id: str | None = None
+    referral_generator_id: str | None = None
+    referral_generator_name: str | None = None
 
 
 async def _medicare_snapshot(npi: str, dataset_year: int | None):
@@ -128,6 +130,8 @@ async def create_lead(data: LeadInput, user=Depends(ANY_CRM)):
         "collected_year": data.collected_year,
         "status": "New", "priority": data.priority, "tags": data.tags,
         "lead_manager_id": data.lead_manager_id, "account_manager_id": data.account_manager_id,
+        "referral_generator_id": data.referral_generator_id,
+        "referral_generator_name": data.referral_generator_name,
         "est_value": data.est_value, "qualification_notes": data.qualification_notes,
         "lost_reason": None,
         "specialty": data.specialty or (snap or {}).get("specialty"),
@@ -179,6 +183,7 @@ async def list_leads(
     state: str | None = None, tier: str | None = None, claim_mismatch: bool = False,
     city: str | None = None, archived: bool = False,
     closer_id: str | None = None, has_closer: bool = False,
+    referral_generator_id: str | None = None,
     radius_mi: float | None = None, origin_address: str | None = None,
     origin_city: str | None = None, origin_state: str | None = None,
     origin_zip: str | None = None,
@@ -205,6 +210,8 @@ async def list_leads(
         query["closer_id"] = closer_id
     if has_closer:
         query["closer_id"] = {"$nin": [None, ""]}
+    if referral_generator_id:
+        query["referral_generator_id"] = referral_generator_id
     if lead_manager_id:
         query["lead_manager_id"] = lead_manager_id
     if account_manager_id:
@@ -237,6 +244,15 @@ async def list_leads(
         return leads
     leads = await db.crm_leads.find(query, {"_id": 0, "activity": 0}).sort(field, -1).to_list(limit)
     return leads
+
+
+@router.get("/referral-generators/counts")
+async def referral_generator_counts(user=Depends(ANY_CRM)):
+    """Map of referral_generator_id -> number of leads produced (for the Referral Search page)."""
+    pipeline = [{"$match": {"referral_generator_id": {"$nin": [None, ""]}}},
+                {"$group": {"_id": "$referral_generator_id", "count": {"$sum": 1}}}]
+    rows = await db.crm_leads.aggregate(pipeline).to_list(5000)
+    return {r["_id"]: r["count"] for r in rows if r.get("_id")}
 
 
 @router.get("/leads/{lead_id}")
