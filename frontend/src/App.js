@@ -20,6 +20,7 @@ import CrmOpportunities from "@/pages/crm/Opportunities";
 import CrmMeetings from "@/pages/crm/Meetings";
 import CrmAccounts from "@/pages/crm/Accounts";
 import CrmMedicare from "@/pages/crm/Medicare";
+import CrmReferralSearch from "@/pages/crm/ReferralSearch";
 import CrmUsers from "@/pages/crm/Users";
 import CrmPhysician from "@/pages/crm/PhysicianWorkspace";
 import CrmProviders from "@/pages/crm/Providers";
@@ -111,6 +112,7 @@ function App() {
             <Route path="meetings" element={<CrmMeetings />} />
             <Route path="accounts" element={<CrmAccounts />} />
             <Route path="medicare" element={<CrmMedicare />} />
+            <Route path="referral-search" element={<CrmReferralSearch />} />
             <Route path="sequences" element={<CrmSequences />} />
             <Route path="communications" element={<CrmCommunications />} />
             <Route path="call-lists" element={<CrmCallLists />} />

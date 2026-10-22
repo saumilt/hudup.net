@@ -22,6 +22,7 @@ const NAV = [
   { to: "/crm/call-lists", label: "Call Lists", icon: PhoneCall },
   { to: "/crm/accounts", label: "Accounts / Physicians", icon: Building2 },
   { to: "/crm/medicare", label: "Medicare Search", icon: Search },
+  { to: "/crm/referral-search", label: "Referral Search", icon: Compass },
   { to: "/crm/sequences", label: "Sequences", icon: Workflow },
 ];
 

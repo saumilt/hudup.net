@@ -8,7 +8,17 @@ import { StatusBadge, PriorityTag, TierPill, Btn, Field, inputCls, EmptyState, M
 import { Users2, Plus, UserCheck, Sparkles, Bookmark, Trash2, AlertTriangle } from "lucide-react";
 
 const US_STATES = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"];
-const EMPTY_FILTERS = { status: "", priority: "", match: "", q: "", mine: false, state: "", tier: "", source: "", claim_mismatch: false, city: "", account_manager_id: "" };
+const EMPTY_FILTERS = { status: "", priority: "", match: "", q: "", mine: false, state: "", tier: "", source: "", claim_mismatch: false, city: "", account_manager_id: "", origin: "", radius_mi: 0 };
+
+// Free-text origin -> backend geocode fields for radius search.
+const parseOrigin = (text) => {
+  const t = (text || "").trim();
+  if (!t) return {};
+  if (/^\d{5}$/.test(t)) return { origin_zip: t };
+  const m = t.match(/^(.+),\s*([A-Za-z]{2})$/);
+  if (m) return { origin_city: m[1].trim(), origin_state: m[2].trim() };
+  return { origin_address: t };
+};
 
 export default function Leads() {
   const { user } = useAuth();
@@ -57,7 +67,9 @@ export default function Leads() {
   };
 
   const load = useCallback(async () => {
-    const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== "" && v !== false));
+    const { origin, radius_mi, ...rest } = filters;
+    const params = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== "" && v !== false && v !== 0));
+    if (radius_mi && origin) Object.assign(params, { radius_mi, ...parseOrigin(origin) });
     const r = await api.get("/crm/leads", { params });
     setLeads(r.data);
   }, [filters]);
@@ -150,6 +162,8 @@ export default function Leads() {
           <select data-testid="lead-filter-tier" value={filters.tier} onChange={(e) => setFilters({ ...filters, tier: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">340B: all</option>{["GREEN", "YELLOW", "BLUE", "RED"].map((t) => <option key={t}>{t}</option>)}</select>
           <select data-testid="lead-filter-state" value={filters.state} onChange={(e) => setFilters({ ...filters, state: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">State: all</option>{US_STATES.map((s) => <option key={s}>{s}</option>)}</select>
           <input data-testid="lead-filter-city" placeholder="City" value={filters.city} onChange={(e) => setFilters({ ...filters, city: e.target.value })} className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <input data-testid="lead-filter-origin" placeholder="Near: ZIP / City, ST / address" value={filters.origin} onChange={(e) => setFilters({ ...filters, origin: e.target.value })} className="w-52 rounded-lg border border-slate-300 px-3 py-2 text-sm" title="Radius search — leave City above blank" />
+          <input data-testid="lead-filter-radius" type="number" min={0} placeholder="mi" value={filters.radius_mi || ""} onChange={(e) => setFilters({ ...filters, radius_mi: Number(e.target.value) })} className="w-16 rounded-lg border border-slate-300 px-2 py-2 text-sm" title="Radius in miles" />
           <select data-testid="lead-filter-assigned" value={filters.account_manager_id} onChange={(e) => setFilters({ ...filters, account_manager_id: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Assigned: all</option>{ams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
           <select data-testid="lead-filter-source" value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Source: all</option>{meta.sources.map((s) => <option key={s}>{s}</option>)}</select>
           <select data-testid="lead-filter-match" value={filters.match} onChange={(e) => setFilters({ ...filters, match: e.target.value })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm"><option value="">Match: all</option><option value="matched">Matched</option><option value="unmatched">Unmatched</option></select>

@@ -33,3 +33,4 @@ resend==2.42.0
 emergentintegrations==0.2.0
 openpyxl==3.1.5
 pypdf==6.19.0
+pgeocode==0.5.0

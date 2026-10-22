@@ -260,6 +260,12 @@ async def _run_init():
     _asyncio.create_task(sequence_worker())
     # Background worker: daily assignment digest email.
     _asyncio.create_task(digest_worker())
+    # Build the provider-city centroid index for radius search (no-op if already built).
+    try:
+        import geo
+        _asyncio.create_task(geo.build_city_geo())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"geo index build skipped (non-blocking): {e}")
 
     # Initialize object storage for chunked CSV upload staging (best-effort).
     try:

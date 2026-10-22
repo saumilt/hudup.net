@@ -179,6 +179,9 @@ async def list_leads(
     state: str | None = None, tier: str | None = None, claim_mismatch: bool = False,
     city: str | None = None, archived: bool = False,
     closer_id: str | None = None, has_closer: bool = False,
+    radius_mi: float | None = None, origin_address: str | None = None,
+    origin_city: str | None = None, origin_state: str | None = None,
+    origin_zip: str | None = None,
     sort: str = "last_activity_at", limit: int = 200,
 ):
     user = await get_current_user(request)
@@ -217,6 +220,21 @@ async def list_leads(
         query["$or"] = [{"org_name": rx}, {"contact_last": rx}, {"contact_first": rx},
                         {"lead_number": rx}, {"email": rx}, {"matched_npi": rx}]
     field = sort if sort in ("last_activity_at", "created_at", "priority", "status") else "last_activity_at"
+    if radius_mi and radius_mi > 0:
+        import geo
+        origin = await geo.geocode_origin(origin_address, origin_city, origin_state, origin_zip)
+        if not origin:
+            return []
+        await geo.build_city_geo()
+        rcities = await geo.provider_cities_in_radius(origin["lat"], origin["lon"], radius_mi)
+        allowed = {(c["state"].strip().upper(), c["city"].strip().upper()) for c in rcities}
+        states = list({c["state"] for c in rcities})
+        query.pop("city", None)
+        query["state"] = {"$in": states}
+        raw = await db.crm_leads.find(query, {"_id": 0, "activity": 0}).sort(field, -1).to_list(5000)
+        leads = [l for l in raw if (str(l.get("state") or "").strip().upper(),
+                                    str(l.get("city") or "").strip().upper()) in allowed][:limit]
+        return leads
     leads = await db.crm_leads.find(query, {"_id": 0, "activity": 0}).sort(field, -1).to_list(limit)
     return leads
 

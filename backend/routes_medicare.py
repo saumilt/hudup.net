@@ -7,6 +7,7 @@ import re
 from deps import db, require_roles, get_thresholds
 from scoring import score_340b, score_rpm, tier_color_340b
 from crm_common import ROLE_LEAD_MANAGER, ROLE_ACCOUNT_MANAGER, ROLE_STAFF
+import geo
 
 router = APIRouter(prefix="/api/medicare")
 
@@ -98,6 +99,11 @@ class SimpleSearch(BaseModel):
     states: list[str] = []
     cities: list[str] = []
     tiers: list[str] = []
+    radius_mi: float | None = None
+    origin_address: str | None = None
+    origin_city: str | None = None
+    origin_state: str | None = None
+    origin_zip: str | None = None
     sort: str = "tot_cost"
     page: int = 1
     page_size: int = 25
@@ -140,6 +146,26 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
     if data.tier_rpm:
         q["tier_rpm"] = data.tier_rpm
 
+    origin = None
+    radius_cities = None
+    if data.radius_mi and data.radius_mi > 0:
+        origin = await geo.geocode_origin(data.origin_address, data.origin_city,
+                                          data.origin_state, data.origin_zip)
+        if not origin:
+            return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
+                    "message": "Could not locate that address / city / ZIP"}
+        await geo.build_city_geo()
+        cities = await geo.provider_cities_in_radius(origin["lat"], origin["lon"], data.radius_mi)
+        radius_cities = len(cities)
+        geo_filter = geo.radius_city_filter(cities)
+        if not geo_filter:
+            return {"total": 0, "results": [], "page": data.page, "page_size": data.page_size,
+                    "origin": origin, "radius_cities": 0,
+                    "message": "No provider cities within that radius"}
+        q.pop("city", None)
+        q.pop("state", None)
+        q = {"$and": [q, geo_filter]}
+
     sort_field = {"tot_cost": "tot_cost", "tot_clms": "tot_clms",
                   "avg_per_claim": "avg_per_claim", "last_name": "last_upper"}.get(data.sort, "tot_cost")
     total = await db.physicians.count_documents(q)
@@ -156,7 +182,37 @@ async def search(data: SimpleSearch, user=Depends(CRM_VIEW)):
             existing[lead["matched_npi"]] = lead
     for r in results:
         r["crm"] = existing.get(r["npi"])
-    return {"total": total, "results": results, "page": data.page, "page_size": data.page_size}
+    resp = {"total": total, "results": results, "page": data.page, "page_size": data.page_size}
+    if origin is not None:
+        resp["origin"] = origin
+        resp["radius_cities"] = radius_cities
+    return resp
+
+
+class GeoResolve(BaseModel):
+    radius_mi: float = 25
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip: str | None = None
+
+
+@router.post("/geo/resolve")
+async def geo_resolve(data: GeoResolve, user=Depends(CRM_VIEW)):
+    """Geocode an origin and list the provider cities within the radius (for the UI)."""
+    origin = await geo.geocode_origin(data.address, data.city, data.state, data.zip)
+    if not origin:
+        raise HTTPException(400, "Could not locate that address / city / ZIP. Try a ZIP or 'City, ST'.")
+    await geo.build_city_geo()
+    cities = await geo.provider_cities_in_radius(origin["lat"], origin["lon"], data.radius_mi)
+    return {"origin": origin, "radius_mi": data.radius_mi, "city_count": len(cities),
+            "cities": cities[:500]}
+
+
+@router.post("/geo/build")
+async def geo_build(user=Depends(CRM_VIEW)):
+    """Rebuild the provider-city centroid index (admin/maintenance)."""
+    return await geo.build_city_geo(force=True)
 
 
 @router.get("/states")
