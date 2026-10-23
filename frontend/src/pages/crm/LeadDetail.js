@@ -32,6 +32,7 @@ export default function LeadDetail() {
   const [edit, setEdit] = useState({});
   const [histFilter, setHistFilter] = useState("all");
   const [terrs, setTerrs] = useState([]);
+  const [refGens, setRefGens] = useState([]);
 
   const runAiEnrich = async () => {
     setAi((s) => ({ ...s, busy: true, result: null }));
@@ -91,6 +92,7 @@ export default function LeadDetail() {
     api.get("/crm/meta").then((r) => setMeta(r.data)).catch(() => {});
     api.get("/users", { params: { roles: "account_manager,lead_manager,admin,super_admin" } }).then((r) => setAms(r.data)).catch(() => {});
     api.get("/crm/territories").then((r) => setTerrs(r.data)).catch(() => {});
+    api.get("/crm/saved-searches", { params: { entity: "referral" } }).then((r) => setRefGens(r.data)).catch(() => {});
   }, [id, load]);
 
   if (!lead) return <div className="p-10 text-slate-400">Loading…</div>;
@@ -126,7 +128,13 @@ export default function LeadDetail() {
     toast.success("Collaborators updated"); load();
   };
   const setMode = async (val) => { await assign("collaboration_mode", val); };
-  const setTerritory = async (val) => {
+  const setReferralSource = async (gid) => {
+    const g = refGens.find((x) => x.id === gid);
+    try {
+      await api.patch(`/crm/leads/${id}`, { referral_generator_id: gid || "", referral_generator_name: gid ? (g?.name || null) : "" });
+      toast.success(gid ? "Referral source set" : "Referral source cleared"); load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };  const setTerritory = async (val) => {
     await api.post(`/crm/leads/${id}/assign`, { territory_id: val });
     toast.success("Territory updated");
     if (isAdmin && val && window.confirm("Reassign this lead to that territory's team automatically?")) {
@@ -421,6 +429,16 @@ export default function LeadDetail() {
                 <p className="text-sm text-slate-600">{lead.routing_reason}</p>
               </div>
             )}
+            <div className="mt-3" data-testid="ld-referral-source">
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400"><Link2 className="h-3 w-3" /> Referral source</p>
+              <select data-testid="ld-referral-select" value={lead.referral_generator_id || ""} onChange={(e) => setReferralSource(e.target.value)} className={`${inputCls} mt-1`}>
+                <option value="">No referral source</option>
+                {refGens.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                {lead.referral_generator_id && !refGens.some((g) => g.id === lead.referral_generator_id) && (
+                  <option value={lead.referral_generator_id}>{lead.referral_generator_name || "Linked source"}</option>
+                )}
+              </select>
+            </div>
             {lead.tags?.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{lead.tags.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{t}</span>)}</div>}
           </section>
 

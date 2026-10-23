@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 28: validated the Referral enhancement end-to-end on web + shared backend. Backend pytest 13/13 passed (physician lookup by name + NPI with capability payload; referral-performance shape + totals; saved-search persistence of source_type/profession/doctor_npi; lead PATCH set + clear of referral_generator_id/name; counts and performance aggregation reflect new leads). Frontend web passed every requested flow: Referral Search source-type dropdown toggles correctly (Other reveals rs-profession + rs-note + rs-name and hides rs-doctor-lookup); Doctor lookup via rs-doctor-lookup returns results and picking rs-doctor-opt-{npi} autofills rs-origin ('Asheville, NC'), rs-specialty ('Rheumatology') and shows rs-capability with rs-cap-level ('Medium referral potential') + reasons; Save source persists and new chip 'Dr. Ellison Smith — Rheumatology' appears in rs-saved; reloading the chip restores rs-capability + rs-track-record; Add lead from a partner row created L-00504 and linked referral_generator_id; Performance tab (rs-tab-report) renders rs-report-table with the saved source (1 lead, 0 opps, 0% conversion) and 'View leads' opens rs-produced-modal; Analytics page an-referral-performance section renders the same per-source table; Lead detail ld-referral-select lists all saved sources, setting it persists and emits Change History entry, clearing to 'No referral source' persists ''. No blocking issues.",
+  "platforms_tested": ["web"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "web": {
+      "ui_bugs": [],
+      "integration_issues": [],
+      "design_issues": []
+    }
+  },
+  "parity_issues": [],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration28_referral_enh.py",
+    "/app/test_reports/pytest/pytest_iter28.xml"
+  ],
+  "action_items": [
+    "(Minor) DELETE /api/crm/leads/{id} returns 405 Method Not Allowed — no hard-delete endpoint exists. Fine as a product choice, but the previous testing agent's cleanup note (orphan referral_generator_id leads) still stands; consider either (a) exposing admin-only delete or (b) a cascading cleanup when a referral source is deleted."
+  ],
+  "critical_code_review_comments": [
+    "routes_crm.referral_performance: on_leads classification uses l['opportunity_id'] (field name) but the field is denormalized from opportunities created later — if a lead gets converted but the lead doc isn't repatched with opportunity_id, the opps count will fall back to the lead_ids $in opps lookup. Works today but keep both paths intentional.",
+    "routes_medicare.physician_lookup: when q is purely digits it only matches prefix on npi (regex ^{q}), fine; when q is alphabetic the final clause {'last_name': rx(parts[-1])} alone can inflate noise before dedupe. Acceptable.",
+    "ReferralSearch.save(): when source_type='doctor' the auto-name is 'Dr. {first} {last} — {specialty}' which uses em-dash — rendering fine but comparing by name across environments would need normalization.",
+    "LeadDetail ld-referral-select renders a fallback <option> for leads whose referral_generator_id is not in refGens list — good for resilience, but if the generator was deleted the user sees 'Linked source' with no name; consider resolving referral_generator_name eagerly.",
+    "Analytics.js fetches /crm/referral-performance in a one-shot useEffect — no refresh when switching back to the tab; if a user creates a referral source then returns, the table is stale until page reload. Not a blocker."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration28_referral_enh.py (new, 13 tests)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all requested flows)"},
+  "test_credentials": "sam@healthandmore.net / 8677 (super_admin) and leadmanager@boothiq.com / 639201 — both work.",
+  "seed_data_creation": "Created saved referral source 'Dr. Ellison Smith — Rheumatology' and lead L-00504 (Ellison Smith) during UI test. Saved search was deleted after test. L-00504 remains in CRM with referral cleared — backend has no DELETE /api/crm/leads/{id} (returns 405), so the lead cannot be hard-removed from here. Pytest-created TEST_iter28_* source + lead were cleaned up by the teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest file /app/backend/tests/test_iteration28_referral_enh.py covers all five backend contract points for the referral enhancement; it reads REACT_APP_BACKEND_URL from /app/frontend/.env as a fallback. Web UI was fully verified at 1920x1080 using sam@healthandmore.net. All data-testid selectors from the spec (rs-source-type, rs-doctor-lookup, rs-doctor-opt-{npi}, rs-capability, rs-cap-level, rs-track-record, rs-profession, rs-note, rs-tab-report, rs-report-table, rs-produced-modal, an-referral-performance, ld-referral-select) are in place and functional. No React hydration warning emitted on these pages in this run — iteration 27's <span> inside <option> warning was not reproduced.",
+  "rca of the issue": ""
+}

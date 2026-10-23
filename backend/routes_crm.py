@@ -255,6 +255,66 @@ async def referral_generator_counts(user=Depends(ANY_CRM)):
     return {r["_id"]: r["count"] for r in rows if r.get("_id")}
 
 
+@router.get("/referral-performance")
+async def referral_performance(user=Depends(ANY_CRM)):
+    """Per referral source: leads produced -> opportunities -> won, with conversion rate."""
+    gens = await db.crm_saved_searches.find({"entity": "referral"}, {"_id": 0}).to_list(500)
+    gen_ids = [g["id"] for g in gens]
+    leads = []
+    if gen_ids:
+        leads = await db.crm_leads.find(
+            {"referral_generator_id": {"$in": gen_ids}},
+            {"_id": 0, "id": 1, "referral_generator_id": 1, "status": 1,
+             "opportunity_id": 1, "account_id": 1},
+        ).to_list(50000)
+    lead_ids = [l["id"] for l in leads]
+    opps = []
+    if lead_ids:
+        opps = await db.crm_opportunities.find(
+            {"lead_id": {"$in": lead_ids}},
+            {"_id": 0, "lead_id": 1, "status": 1, "stage": 1, "account_id": 1},
+        ).to_list(50000)
+    won_leads = {o["lead_id"] for o in opps if o.get("status") == "won" or o.get("stage") == "Closed Won"}
+    conv_leads = {o["lead_id"] for o in opps}
+    acct_by_lead = {o["lead_id"]: o.get("account_id") for o in opps if o.get("account_id")}
+
+    agg: dict = {}
+    for l in leads:
+        gid = l.get("referral_generator_id")
+        a = agg.setdefault(gid, {"leads": 0, "opportunities": 0, "won": 0, "accounts": set()})
+        a["leads"] += 1
+        if l["id"] in conv_leads or l.get("opportunity_id") or l.get("status") in ("Opportunity", "Won"):
+            a["opportunities"] += 1
+        if l["id"] in won_leads or l.get("status") == "Won":
+            a["won"] += 1
+        acct = l.get("account_id") or acct_by_lead.get(l["id"])
+        if acct:
+            a["accounts"].add(acct)
+
+    rows = []
+    for g in gens:
+        a = agg.get(g["id"], {"leads": 0, "opportunities": 0, "won": 0, "accounts": set()})
+        q = g.get("query") or {}
+        rows.append({
+            "id": g["id"], "name": g.get("name"),
+            "source_type": q.get("source_type") or "other",
+            "profession": q.get("profession"),
+            "doctor_npi": q.get("doctor_npi"),
+            "leads": a["leads"], "opportunities": a["opportunities"],
+            "won": a["won"], "accounts": len(a["accounts"]),
+            "conversion_rate": round(a["won"] / a["leads"] * 100) if a["leads"] else 0,
+        })
+    rows.sort(key=lambda r: (r["leads"], r["won"]), reverse=True)
+    totals = {
+        "sources": len(rows),
+        "leads": sum(r["leads"] for r in rows),
+        "opportunities": sum(r["opportunities"] for r in rows),
+        "won": sum(r["won"] for r in rows),
+        "accounts": sum(r["accounts"] for r in rows),
+    }
+    return {"rows": rows, "totals": totals}
+
+
 @router.get("/leads/{lead_id}")
 async def get_lead(lead_id: str, user=Depends(ANY_CRM)):
     lead = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})
@@ -285,6 +345,8 @@ class LeadPatch(BaseModel):
     specialty: str | None = None
     city: str | None = None
     state: str | None = None
+    referral_generator_id: str | None = None
+    referral_generator_name: str | None = None
 
 
 @router.patch("/leads/{lead_id}")
@@ -292,6 +354,9 @@ async def patch_lead(lead_id: str, data: LeadPatch, user=Depends(ANY_CRM)):
     patch = {k: v for k, v in data.dict().items() if v is not None}
     if "state" in patch and patch["state"]:
         patch["state"] = patch["state"].upper()
+    for rk in ("referral_generator_id", "referral_generator_name"):
+        if rk in patch and patch[rk] == "":
+            patch[rk] = None
     if not patch:
         return {"ok": True}
     old = await db.crm_leads.find_one({"id": lead_id}, {"_id": 0})

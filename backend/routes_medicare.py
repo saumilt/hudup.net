@@ -265,6 +265,67 @@ async def geo_build(user=Depends(CRM_VIEW)):
     return await geo.build_city_geo(force=True)
 
 
+def referral_capability(row: dict) -> dict:
+    """Score a physician's potential as a referral generator from Medicare stats."""
+    clms = row.get("tot_clms", 0) or 0
+    cost = row.get("tot_cost", 0) or 0
+    t340 = row.get("tier_340b")
+    trpm = row.get("tier_rpm")
+    score, reasons = 0, []
+    if clms >= 5000:
+        score += 2; reasons.append(f"Very high patient volume ({int(clms):,} claims)")
+    elif clms >= 1000:
+        score += 1; reasons.append(f"Solid patient volume ({int(clms):,} claims)")
+    if cost >= 5_000_000:
+        score += 2; reasons.append(f"High prescribing spend (${round(cost / 1e6, 1)}M)")
+    elif cost >= 1_000_000:
+        score += 1; reasons.append(f"Meaningful prescribing spend (${round(cost / 1e6, 1)}M)")
+    if t340 == "GREEN":
+        score += 1; reasons.append("Strong 340B profile (GREEN)")
+    if trpm == "GREEN":
+        score += 1; reasons.append("Strong RPM fit (GREEN)")
+    level = "High" if score >= 4 else "Medium" if score >= 2 else "Low"
+    if not reasons:
+        reasons.append("Limited Medicare footprint on record")
+    return {"level": level, "score": score, "reasons": reasons}
+
+
+@router.get("/physicians/lookup")
+async def physician_lookup(q: str, limit: int = 8, user=Depends(CRM_VIEW)):
+    """Typeahead over the Medicare physician table by name or NPI, with a referral-capability badge."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"results": []}
+    if q.isdigit():
+        docs = await db.physicians.find({"npi": {"$regex": f"^{re.escape(q)}"}}, {"_id": 0}).limit(40).to_list(40)
+    else:
+        parts = [p for p in re.split(r"[\s,]+", q) if p]
+        rx = lambda s: {"$regex": re.escape(s), "$options": "i"}  # noqa: E731
+        if len(parts) >= 2:
+            query = {"$or": [
+                {"last_name": rx(parts[-1]), "first_name": rx(parts[0])},
+                {"last_name": rx(parts[0]), "first_name": rx(parts[-1])},
+                {"last_name": rx(parts[-1])},
+            ]}
+        else:
+            query = {"$or": [{"last_name": rx(parts[0])}, {"first_name": rx(parts[0])}]}
+        docs = await db.physicians.find(query, {"_id": 0}).limit(80).to_list(80)
+    t = await get_thresholds()
+    best: dict = {}
+    for d in docs:
+        npi = d.get("npi")
+        if not npi:
+            continue
+        if npi not in best or (d.get("tot_cost", 0) or 0) > (best[npi].get("tot_cost", 0) or 0):
+            best[npi] = d
+    rows = [_score_row(d, t) for d in best.values()]
+    rows.sort(key=lambda r: r.get("tot_cost", 0) or 0, reverse=True)
+    rows = rows[:limit]
+    for r in rows:
+        r["capability"] = referral_capability(r)
+    return {"results": rows}
+
+
 @router.get("/states")
 async def med_states(dataset_year: int = 2024, user=Depends(CRM_VIEW)):
     sids = await _session_ids_for_year(dataset_year)
