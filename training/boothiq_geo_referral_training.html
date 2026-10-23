@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>BoothIQ Training — Geographic &amp; Referral Search</title>
+<style>
+  @page {
+    size: Letter;
+    margin: 20mm 16mm 18mm 16mm;
+    @bottom-center {
+      content: "BoothIQ — Confidential · Internal Training Use Only";
+      font-size: 8pt; color: #94a3b8;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 8pt; color: #94a3b8;
+    }
+  }
+  @page :first { margin: 0; @bottom-center { content: ""; } @bottom-right { content: ""; } }
+
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1e293b; font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1, h2, h3 { color: #0f172a; margin: 0 0 6px; line-height: 1.2; }
+  p { margin: 0 0 9px; }
+  a { color: #0f766e; text-decoration: none; }
+  .muted { color: #64748b; }
+  .teal { color: #0f766e; }
+
+  /* ---------- Cover ---------- */
+  .cover { height: 100vh; padding: 0; background: #0f766e; color: #ffffff; position: relative; page-break-after: always; }
+  .cover-inner { position: absolute; top: 60mm; left: 20mm; right: 20mm; }
+  .cover .brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 42mm; }
+  .cover .logo { width: 34px; height: 34px; border-radius: 9px; background: #ffffff; color: #0f766e; font-weight: 800; font-size: 18pt; display: inline-flex; align-items: center; justify-content: center; }
+  .cover .brand { font-size: 15pt; font-weight: 700; letter-spacing: .5px; }
+  .cover .kicker { font-size: 11pt; text-transform: uppercase; letter-spacing: 3px; color: #99f6e4; margin-bottom: 8px; }
+  .cover h1 { color: #ffffff; font-size: 40pt; line-height: 1.05; margin-bottom: 14px; }
+  .cover .sub { font-size: 14pt; color: #ccfbf1; max-width: 150mm; }
+  .cover .meta { position: absolute; bottom: 24mm; left: 20mm; right: 20mm; border-top: 1px solid rgba(255,255,255,.25); padding-top: 12px; font-size: 10pt; color: #ccfbf1; display: flex; justify-content: space-between; }
+  .cover .badge { display: inline-block; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 4px 12px; font-weight: 700; }
+
+  /* ---------- Section headers ---------- */
+  .sec { page-break-inside: avoid; }
+  h2.section { font-size: 18pt; border-left: 5px solid #0f766e; padding: 2px 0 2px 12px; margin: 22px 0 10px; }
+  h2.section .n { color: #0f766e; font-weight: 800; }
+  h3.sub { font-size: 12.5pt; margin: 14px 0 6px; color: #0f766e; }
+
+  /* ---------- Callouts ---------- */
+  .tip, .note, .rule { border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 10pt; page-break-inside: avoid; }
+  .tip { background: #f0fdfa; border: 1px solid #99f6e4; }
+  .note { background: #fffbeb; border: 1px solid #fde68a; }
+  .rule { background: #fef2f2; border: 1px solid #fecaca; }
+  .tip > b:first-child, .note > b:first-child, .rule > b:first-child { display: block; margin-bottom: 2px; }
+  .tip > b:first-child { color: #0f766e; } .note > b:first-child { color: #b45309; } .rule > b:first-child { color: #b91c1c; }
+
+  /* ---------- Steps ---------- */
+  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 8px 0; }
+  ol.steps li { counter-increment: step; position: relative; padding: 4px 0 8px 32px; page-break-inside: avoid; }
+  ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 22px; height: 22px; background: #0f766e; color: #fff; border-radius: 50%; font-size: 9.5pt; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  ul.clean { margin: 6px 0; padding-left: 18px; }
+  ul.clean li { margin-bottom: 4px; }
+
+  /* ---------- Figures ---------- */
+  figure { margin: 12px 0 16px; page-break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; }
+  figcaption { font-size: 8.5pt; color: #64748b; margin-top: 5px; text-align: center; }
+
+  /* ---------- Feature cards ---------- */
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+  .card { width: calc(50% - 5px); border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; page-break-inside: avoid; }
+  .card .ico { width: 26px; height: 26px; border-radius: 7px; background: #f0fdfa; color: #0f766e; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px; font-size: 11pt; }
+  .card h4 { margin: 0 0 4px; font-size: 11pt; color: #0f172a; }
+  .card p { margin: 0; font-size: 9.3pt; color: #475569; }
+
+  /* ---------- TOC ---------- */
+  .toc { margin: 10px 0; }
+  .toc .row { display: flex; justify-content: space-between; border-bottom: 1px dotted #cbd5e1; padding: 7px 0; font-size: 11pt; }
+  .toc .row b { color: #0f766e; margin-right: 8px; }
+
+  /* ---------- Chip / pill demo ---------- */
+  .pill { display:inline-block; background:#0f766e; color:#fff; border-radius:999px; padding:2px 9px; font-size:8.5pt; font-weight:700; }
+  .pill.off { background:#f1f5f9; color:#64748b; }
+  .kbd { background:#f1f5f9; border:1px solid #cbd5e1; border-radius:5px; padding:1px 6px; font-size:9pt; font-weight:600; }
+
+  table.ref { width:100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }
+  table.ref th { background:#0f766e; color:#fff; text-align:left; padding:7px 10px; }
+  table.ref td { border-bottom:1px solid #e2e8f0; padding:7px 10px; vertical-align: top; }
+  table.ref tr:nth-child(even) td { background:#f8fafc; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<section class="cover">
+  <div class="cover-inner">
+    <div class="brandrow">
+      <span class="logo">B</span>
+      <span class="brand">BoothIQ</span>
+    </div>
+    <div class="kicker">Employee Training Guide</div>
+    <h1>Geographic &amp;<br/>Referral Search</h1>
+    <p class="sub">Find the right doctors by location, see them on a live map, and track the leads your referral partners produce.</p>
+  </div>
+  <div class="meta">
+    <span>Release <span class="badge">v2.33</span> &nbsp;·&nbsp; October 2026</span>
+    <span>Audience: Sales Reps · Lead Managers · Account Managers</span>
+  </div>
+</section>
+
+<!-- ============ INTRO / TOC ============ -->
+<section class="sec">
+  <h2 class="section"><span class="n">About this guide</span></h2>
+  <p>Over the last few days we shipped a connected set of features that make it far easier to find prospects near any location and to see where your referral partners send you business. This guide walks you through each one in plain language, with screenshots and step‑by‑step instructions. No technical knowledge required.</p>
+
+  <h3 class="sub">What you'll learn</h3>
+  <div class="grid">
+    <div class="card"><span class="ico">1</span><h4>Radius Search</h4><p>Enter an address, city, or ZIP + a distance to find every doctor in the surrounding area.</p></div>
+    <div class="card"><span class="ico">2</span><h4>Map View</h4><p>See your radius results on an interactive map — pins sized by how many doctors are in each city.</p></div>
+    <div class="card"><span class="ico">3</span><h4>Drive‑Time Radius</h4><p>Search by "minutes of driving" instead of miles, using an adjustable average speed.</p></div>
+    <div class="card"><span class="ico">4</span><h4>Referral Search</h4><p>A dedicated page to find referral partners around a referring doctor's practice.</p></div>
+    <div class="card"><span class="ico">5</span><h4>Saved Generators &amp; Referral Network</h4><p>Save a referral source and track exactly how many leads it has produced for you.</p></div>
+    <div class="card"><span class="ico">★</span><h4>Where it lives</h4><p>Left sidebar → <b>Medicare Search</b> and the new <b>Referral Search</b>.</p></div>
+  </div>
+
+  <h2 class="section" style="margin-top:20px;"><span class="n">Contents</span></h2>
+  <div class="toc">
+    <div class="row"><span><b>1.</b> Radius Search (Medicare Search &amp; Leads)</span></div>
+    <div class="row"><span><b>2.</b> Map View — reading the coverage map</span></div>
+    <div class="row"><span><b>3.</b> Drive‑Time Radius</span></div>
+    <div class="row"><span><b>4.</b> Referral Search page</span></div>
+    <div class="row"><span><b>5.</b> Saved Generators &amp; the Referral Network</span></div>
+    <div class="row"><span><b>6.</b> Tips, FAQ &amp; Quick Reference</span></div>
+  </div>
+</section>
+
+<!-- ============ 1. RADIUS SEARCH ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">1.</span> Radius Search</h2>
+  <p><b>What it is.</b> You can now search for doctors <b>near a location</b>. Type an address, a city, or a ZIP code, choose a radius (how far out to look), and BoothIQ returns every matching physician in all the nearby cities — not just the one you typed.</p>
+  <p><b>Why it helps.</b> Reps plan trips and territories by geography. Instead of guessing which towns are "close," you get the exact list of cities inside your radius and all the doctors in them, ranked by distance.</p>
+
+  <h3 class="sub">How to run a radius search</h3>
+  <ol class="steps">
+    <li>Open <b>Medicare Search</b> from the left sidebar.</li>
+    <li>Find the highlighted <b>"Near — address, city, or ZIP"</b> box (the row with the map‑pin icon).</li>
+    <li>Type any of these: a ZIP (<span class="kbd">06510</span>), a city + state (<span class="kbd">New Haven, CT</span>), or a full street address.</li>
+    <li>Pick a <b>radius</b>: tap a quick chip — <span class="pill">10mi</span> <span class="pill off">25mi</span> <span class="pill off">50mi</span> <span class="pill off">100mi</span> — or type your own number.</li>
+    <li>Add any other filters you like (specialty, 340B color, RPM tier) and click <b>Search</b>.</li>
+  </ol>
+
+  <figure>
+    <img src="file:///tmp/train_med_form.png" alt="Medicare Search radius results" />
+    <figcaption>Radius search on Medicare Search: results for doctors within 25 miles of New Haven, CT 06510 — the banner confirms the area and the number of nearby cities.</figcaption>
+  </figure>
+
+  <p>After searching, a banner appears: <i>"Showing doctors within 25 mi of New Haven, CT 06510 — 59 nearby cities."</i> That confirms exactly what you're looking at.</p>
+
+  <div class="tip"><b>Tip</b>Radius search also works on the <b>Leads</b> list. Use the "Near" filter there to pull up every existing lead around a city you're about to visit.</div>
+  <div class="note"><b>Good to know</b>Our Medicare data is organized by city, so a radius search returns whole cities whose center falls inside your circle. It's built to be accurate for trip planning, not GPS‑exact to a single street.</div>
+</section>
+
+<!-- ============ 2. MAP VIEW ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">2.</span> Map View</h2>
+  <p><b>What it is.</b> Any radius search can be viewed as an interactive <b>map</b> instead of a list. You'll see exactly where your prospects cluster.</p>
+
+  <h3 class="sub">How to open it</h3>
+  <ol class="steps">
+    <li>Run a radius search (Section 1).</li>
+    <li>In the results banner, use the toggle on the right: <span class="pill off">List</span> <span class="pill">Map</span>.</li>
+    <li>Click <b>Map</b> — the coverage map loads.</li>
+  </ol>
+
+  <figure>
+    <img src="file:///tmp/train_med_map.png" alt="Coverage map with city pins and radius circle" />
+    <figcaption>The coverage map: a red origin marker, a shaded radius circle, and teal city pins sized by how many matching doctors are in each city.</figcaption>
+  </figure>
+
+  <h3 class="sub">How to read the map</h3>
+  <ul class="clean">
+    <li><b>Red pin</b> — your origin (the address/city/ZIP you searched from). Its label shows the location name.</li>
+    <li><b>Shaded circle</b> — the radius you chose. Everything inside it is in range.</li>
+    <li><b>Teal dots</b> — cities with matching doctors. <b>Bigger dots = more doctors</b> in that city.</li>
+    <li><b>Hover</b> a dot to see the city and its doctor count; <b>click</b> it for a small popup with details.</li>
+    <li>Use <span class="kbd">+</span> / <span class="kbd">−</span> (top‑left) to zoom.</li>
+  </ul>
+
+  <div class="tip"><b>Tip</b>Switch back to <b>List</b> anytime to work the results — add leads, open records, or page through the table.</div>
+</section>
+
+<!-- ============ 3. DRIVE-TIME ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">3.</span> Drive‑Time Radius</h2>
+  <p><b>What it is.</b> Sometimes "30 minutes away" is more useful than "20 miles away." The radius control has a <b>Drive time</b> mode that lets you search by minutes of driving.</p>
+
+  <h3 class="sub">How to use it</h3>
+  <ol class="steps">
+    <li>In the radius controls, switch the mode toggle from <span class="pill">Miles</span> to <span class="pill off">Drive time</span>.</li>
+    <li>Enter the minutes — or tap a chip: <span class="pill off">15m</span> <span class="pill">30m</span> <span class="pill off">45m</span> <span class="pill off">60m</span>.</li>
+    <li>Optionally adjust the <b>Avg mph</b> (default is 45 mph) to match highway vs. city driving.</li>
+    <li>Click <b>Search</b>. The banner shows the equivalent distance, e.g. <i>"~23 mi (≈30 min @ 45 mph)."</i></li>
+  </ol>
+
+  <div class="note"><b>How the estimate works</b>Drive time is a smart <b>approximation</b>: BoothIQ converts your minutes into miles using the average speed you set (minutes × mph ÷ 60). It does <b>not</b> use live traffic or turn‑by‑turn routing — it's a fast, dependable estimate for planning. Lower the mph for dense urban areas; raise it for open highways.</div>
+
+  <div class="tip"><b>Tip</b>Your chosen mode (miles or drive‑time) is remembered when you <b>save a view</b> or a <b>referral generator</b> — reload it later and the exact radius comes back.</div>
+</section>
+
+<!-- ============ 4. REFERRAL SEARCH ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">4.</span> Referral Search</h2>
+  <p><b>What it is.</b> A dedicated page for <b>referral partnerships</b>. Start from a referring doctor's practice and find nearby doctors who could become referral partners — then turn them into leads in one click.</p>
+
+  <h3 class="sub">How to run a referral search</h3>
+  <ol class="steps">
+    <li>Open <b>Referral Search</b> from the left sidebar.</li>
+    <li><b>Referral generator (optional):</b> name the referring source, e.g. "Dr. Jane Smith — Cardiology."</li>
+    <li><b>Their practice:</b> enter the referring doctor's address, city, or ZIP.</li>
+    <li>Choose a <b>radius</b> (miles or drive‑time) and any filters — <b>Specialty</b>, <b>340B color</b>, <b>RPM tier</b>.</li>
+    <li>Click <b>Find referral partners</b>.</li>
+  </ol>
+
+  <figure>
+    <img src="file:///tmp/train_ref_form.png" alt="Referral Search results" />
+    <figcaption>Referral Search: nearby potential partners around Dr. Jane Smith's practice in New Haven, CT, with the list of in‑radius cities and one‑click "Add lead."</figcaption>
+  </figure>
+
+  <h3 class="sub">Turning a result into a lead</h3>
+  <ul class="clean">
+    <li>Each row has an <b>Add lead</b> button. Click it to create a CRM lead for that doctor.</li>
+    <li>The new lead is automatically tagged with its source (<b>"Referral Search"</b>) and linked to the referral generator you named — so credit is tracked (see Section 5).</li>
+    <li>A row already in your CRM shows an <b>"In CRM"</b> badge instead, so you never create duplicates.</li>
+  </ul>
+
+  <div class="tip"><b>Tip</b>Switch to <b>Map</b> view here too, to see partner density around the referring practice.</div>
+</section>
+
+<!-- ============ 5. SAVED GENERATORS / NETWORK ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">5.</span> Saved Generators &amp; the Referral Network</h2>
+  <p><b>What it is.</b> Save any referral source once, reload it instantly later, and <b>track how many leads it has produced</b> for you over time.</p>
+
+  <h3 class="sub">Save a referral generator</h3>
+  <ol class="steps">
+    <li>Fill in the referral form (name, practice location, radius, filters).</li>
+    <li>Click <b>Save generator</b> (top‑right). Give it a clear name if prompted.</li>
+    <li>It now appears as a chip in the <b>Saved generators</b> bar at the top of the page.</li>
+  </ol>
+
+  <h3 class="sub">Reload &amp; track produced leads</h3>
+  <ul class="clean">
+    <li><b>Click a saved chip</b> to instantly reload its area + filters and re‑run the search.</li>
+    <li>When leads have been created from that generator, the chip shows a <b>"X leads"</b> badge (e.g. <span class="pill">1 leads</span>).</li>
+    <li><b>Click the badge</b> to open a list of exactly which leads that referral source produced — click any one to jump to its record.</li>
+    <li>Remove a generator with the trash icon on its chip.</li>
+  </ul>
+
+  <figure>
+    <img src="file:///tmp/train_ref_map.png" alt="Referral Search map view with saved generator" />
+    <figcaption>The "Saved generators" bar (top) shows each source and a live "leads" badge; the map shows potential partners around the practice.</figcaption>
+  </figure>
+
+  <div class="tip"><b>Why this matters</b>This is your <b>referral network scorecard</b>. At a glance you can see which referring doctors actually send you business, so you know where to invest your relationship‑building time.</div>
+</section>
+
+<!-- ============ 6. TIPS / FAQ / REFERENCE ============ -->
+<section class="sec pagebreak">
+  <h2 class="section"><span class="n">6.</span> Tips, FAQ &amp; Quick Reference</h2>
+
+  <h3 class="sub">Frequently asked questions</h3>
+  <table class="ref">
+    <tr><th style="width:38%;">Question</th><th>Answer</th></tr>
+    <tr><td>What can I type in the "Near / practice" box?</td><td>A 5‑digit ZIP (06510), a city + state (New Haven, CT), or a full street address. BoothIQ figures out which one you entered.</td></tr>
+    <tr><td>Why do results show nearby towns I didn't type?</td><td>That's the point of radius search — it returns every city whose center is inside your circle, ranked by distance.</td></tr>
+    <tr><td>Is drive‑time exact?</td><td>No — it's a fast estimate (minutes × average mph). Adjust the mph for city vs. highway driving.</td></tr>
+    <tr><td>Do I need to install maps or get a key?</td><td>No. The map and all location features are built in and free to use.</td></tr>
+    <tr><td>Will "Add lead" create duplicates?</td><td>No. Doctors already in your CRM show an "In CRM" badge instead of an Add button.</td></tr>
+    <tr><td>How is referral credit tracked?</td><td>Leads created from Referral Search are linked to the generator you named; the "X leads" badge counts them automatically.</td></tr>
+  </table>
+
+  <h3 class="sub">Quick reference — where things live</h3>
+  <table class="ref">
+    <tr><th style="width:38%;">I want to…</th><th>Do this</th></tr>
+    <tr><td>Find doctors near a location</td><td>Medicare Search → "Near" box + radius → Search</td></tr>
+    <tr><td>See results on a map</td><td>After searching → toggle <b>Map</b> in the banner</td></tr>
+    <tr><td>Search by driving time</td><td>Radius controls → <b>Drive time</b> → minutes + avg mph</td></tr>
+    <tr><td>Find referral partners</td><td>Referral Search → practice + radius → Find referral partners</td></tr>
+    <tr><td>Save a referral source</td><td>Referral Search → <b>Save generator</b></td></tr>
+    <tr><td>See leads a source produced</td><td>Referral Search → click the <b>"X leads"</b> badge on its chip</td></tr>
+    <tr><td>Reuse a saved search with its radius</td><td>Medicare Search → <b>Saved views</b> · Referral Search → saved chip</td></tr>
+  </table>
+
+  <div class="tip"><b>Need help?</b>If a location won't resolve, try a ZIP code or the "City, ST" format — that's the most reliable. Reach out to your admin for anything else.</div>
+
+  <p class="muted" style="margin-top:18px; font-size:9pt;">BoothIQ · Internal training material · Release v2.33 (October 2026). Features and screens may evolve in future releases.</p>
+</section>
+
+</body>
+</html>
