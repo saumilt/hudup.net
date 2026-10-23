@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { StatusBadge, TierPill, Btn, Field, inputCls, money, fmtDate, Modal, ProbabilityBadge, CompletenessBadge, leadCompleteness } from "@/components/crm/kit";
 import Softphone from "@/components/crm/Softphone";
+import ClientServicesPanel from "@/components/crm/ClientServicesPanel";
 import { ArrowLeft, Activity, Target, StickyNote, History, UserCheck, Link2, Stethoscope,
   Mail, Phone, MessageSquare, CalendarPlus, Sparkles, ShieldCheck, Check, RefreshCw, Bot, Shuffle, Pencil, AlertTriangle, FileText } from "lucide-react";
 
@@ -310,6 +311,7 @@ export default function LeadDetail() {
       <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
         {/* Left: details */}
         <div className="space-y-6 lg:col-span-2">
+          <ClientServicesPanel key={lead.id} lead={lead} onSaved={load} />
           {/* Medicare snapshot */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
             <div className="mb-3 flex items-center gap-2"><Stethoscope className="h-4 w-4 text-primary" /><h2 className="font-display font-bold text-slate-900">Medicare Match</h2>

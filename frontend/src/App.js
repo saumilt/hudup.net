@@ -4,6 +4,9 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "@/components/ui/sonner";
 import Launcher from "@/pages/Launcher";
+import ProviderLanding from "@/pages/ProviderLanding";
+import CrmClients from "@/pages/crm/Clients";
+import CrmServiceReferrals from "@/pages/crm/ServiceReferrals";
 import Login from "@/pages/Login";
 import ChangePin from "@/pages/ChangePin";
 import Kiosk from "@/pages/Kiosk";
@@ -48,7 +51,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Launcher />} />
+          <Route path="/" element={<ProviderLanding />} />
           <Route path="/home" element={<Launcher />} />
           <Route path="/login" element={<Login />} />
           <Route path="/change-pin" element={<ProtectedRoute><ChangePin /></ProtectedRoute>} />
@@ -106,6 +109,8 @@ function App() {
           >
             <Route index element={<CrmDashboard />} />
             <Route path="leads" element={<CrmLeads />} />
+            <Route path="clients" element={<CrmClients />} />
+            <Route path="service-referrals" element={<CrmServiceReferrals />} />
             <Route path="leads/:id" element={<CrmLeadDetail />} />
             <Route path="physicians/:npi" element={<CrmPhysician />} />
             <Route path="opportunities" element={<CrmOpportunities />} />

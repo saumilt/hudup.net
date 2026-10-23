@@ -16,6 +16,8 @@ const ROLE_LABEL = {
 const NAV = [
   { to: "/crm", label: "Home", icon: LayoutDashboard, end: true },
   { to: "/crm/leads", label: "Leads", icon: Users2 },
+  { to: "/crm/clients", label: "Clients & Services", icon: Building2 },
+  { to: "/crm/service-referrals", label: "Referral Tracking", icon: Network },
   { to: "/crm/opportunities", label: "Opportunities", icon: Target },
   { to: "/crm/meetings", label: "Meetings & Tasks", icon: CalendarClock },
   { to: "/crm/communications", label: "Communications", icon: Inbox },
@@ -61,7 +63,7 @@ function TopBar() {
       <div className="relative">
         <button data-testid="workspace-switcher" onClick={() => setShowSwitch((s) => !s)}
           className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-800 hover:bg-slate-50">
-          <Grid3x3 className="h-4 w-4 text-primary" /> BoothIQ CRM <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+          <Grid3x3 className="h-4 w-4 text-primary" /> HudlUp CRM <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
         {showSwitch && (
           <div className="absolute left-0 top-full z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl" onMouseLeave={() => setShowSwitch(false)}>
@@ -114,7 +116,7 @@ export default function CrmShell() {
       <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4">
           <Activity className="h-6 w-6 text-primary" />
-          <span className="font-display text-lg font-bold">BoothIQ</span>
+          <span className="font-display text-lg font-bold">HudlUp</span>
           <span className="ml-auto rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-400">v{APP_VERSION}</span>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
