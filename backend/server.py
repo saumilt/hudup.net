@@ -29,6 +29,7 @@ from routes_push import router as push_router
 from routes_voice import router as voice_router
 from routes_digest import router as digest_router, digest_worker
 from routes_ai_enrich import router as ai_enrich_router
+from routes_client_services import router as client_services_router, public_router as website_public_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("boothiq")
 
@@ -89,6 +90,8 @@ app.include_router(push_router)
 app.include_router(voice_router)
 app.include_router(digest_router)
 app.include_router(ai_enrich_router)
+app.include_router(client_services_router)
+app.include_router(website_public_router)
 
 
 @app.websocket("/api/ws/{room}")
@@ -155,6 +158,10 @@ async def _initialize():
 
 
 async def _run_init():
+    await db.website_rate_limits.create_index("expires_at", expireAfterSeconds=0)
+    await db.crm_service_referrals.create_index([("lead_id", 1), ("created_at", -1)])
+    await db.crm_service_referrals.create_index("id", unique=True)
+    await db.crm_leads.create_index("client_profile.client_status")
     # Indexes for single-digit-ms NPI lookups at the counter.
     await db.physicians.create_index("npi")
     await db.physicians.create_index([("session_id", 1), ("npi", 1)])
